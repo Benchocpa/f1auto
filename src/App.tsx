@@ -11,6 +11,14 @@ import {
 import { Badge } from "./components/ui/badge";
 import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "./components/ui/dialog";
 import { Label } from "./components/ui/label";
 import { Select } from "./components/ui/select";
 import {
@@ -33,6 +41,7 @@ const STORES = [
 
 const VEHICLE_STORAGE_KEY = "carwash-vehicles-v1";
 const ATTENDANCE_STORAGE_KEY = "carwash-attendance-v1";
+const EMPLOYEES_STORAGE_KEY = "carwash-employees-v1";
 
 type StoreName = (typeof STORES)[number];
 type VehicleStatus = "Pendiente" | "En proceso" | "Listo" | "Entregado";
@@ -56,6 +65,7 @@ interface VehicleEntry {
 
 interface AttendanceEntry {
   id: string;
+  employeeCode: string;
   employeeName: string;
   role: string;
   store: StoreName;
@@ -63,6 +73,16 @@ interface AttendanceEntry {
   clockIn: string;
   clockOut: string | null;
   notes: string;
+}
+
+interface EmployeeEntry {
+  id: string;
+  employeeCode: string;
+  employeeName: string;
+  role: string;
+  store: StoreName;
+  active: boolean;
+  createdAt: string;
 }
 
 interface VehicleFormState {
@@ -80,10 +100,18 @@ interface VehicleFormState {
 }
 
 interface AttendanceFormState {
+  employeeCode: string;
   employeeName: string;
   role: string;
   store: StoreName;
   notes: string;
+}
+
+interface EmployeeFormState {
+  employeeCode: string;
+  employeeName: string;
+  role: string;
+  store: StoreName;
 }
 
 const createVehicleForm = (store: StoreName): VehicleFormState => ({
@@ -101,10 +129,18 @@ const createVehicleForm = (store: StoreName): VehicleFormState => ({
 });
 
 const createAttendanceForm = (store: StoreName): AttendanceFormState => ({
+  employeeCode: "",
   employeeName: "",
   role: "",
   store,
   notes: "",
+});
+
+const createEmployeeForm = (store: StoreName): EmployeeFormState => ({
+  employeeCode: "",
+  employeeName: "",
+  role: "",
+  store,
 });
 
 const formatCurrency = (value: number) =>
@@ -130,14 +166,22 @@ const formatDuration = (clockIn: string, clockOut: string | null) => {
 
 function App() {
   const [activeStore, setActiveStore] = useState<StoreName>(STORES[0]);
+  const [makeFilter, setMakeFilter] = useState("Todas");
   const [vehicleForm, setVehicleForm] = useState<VehicleFormState>(() =>
     createVehicleForm(STORES[0])
   );
   const [attendanceForm, setAttendanceForm] = useState<AttendanceFormState>(() =>
     createAttendanceForm(STORES[0])
   );
+  const [employeeForm, setEmployeeForm] = useState<EmployeeFormState>(() =>
+    createEmployeeForm(STORES[0])
+  );
+  const [isEmployeeModalOpen, setIsEmployeeModalOpen] = useState(false);
+  const [clockOutTarget, setClockOutTarget] = useState<AttendanceEntry | null>(null);
+  const [clockOutCodeInput, setClockOutCodeInput] = useState("");
   const [vehicles, setVehicles] = useState<VehicleEntry[]>([]);
   const [attendance, setAttendance] = useState<AttendanceEntry[]>([]);
+  const [employees, setEmployees] = useState<EmployeeEntry[]>([]);
   const [feedback, setFeedback] = useState<string | null>(null);
 
   useEffect(() => {
@@ -149,7 +193,25 @@ function App() {
     }
 
     if (storedAttendance) {
-      setAttendance(JSON.parse(storedAttendance));
+      const parsedAttendance = JSON.parse(storedAttendance) as AttendanceEntry[];
+      setAttendance(
+        parsedAttendance.map((entry) => ({
+          ...entry,
+          employeeCode: normalizeEmployeeCode(entry.employeeCode),
+        }))
+      );
+    }
+
+    const storedEmployees = localStorage.getItem(EMPLOYEES_STORAGE_KEY);
+    if (storedEmployees) {
+      const parsedEmployees = JSON.parse(storedEmployees) as EmployeeEntry[];
+      setEmployees(
+        parsedEmployees.map((entry) => ({
+          ...entry,
+          employeeCode: normalizeEmployeeCode(entry.employeeCode),
+          active: entry.active ?? true,
+        }))
+      );
     }
   }, []);
 
@@ -162,8 +224,13 @@ function App() {
   }, [attendance]);
 
   useEffect(() => {
+    localStorage.setItem(EMPLOYEES_STORAGE_KEY, JSON.stringify(employees));
+  }, [employees]);
+
+  useEffect(() => {
     setVehicleForm((current) => ({ ...current, store: activeStore }));
     setAttendanceForm((current) => ({ ...current, store: activeStore }));
+    setEmployeeForm((current) => ({ ...current, store: activeStore }));
   }, [activeStore]);
 
   useEffect(() => {
@@ -177,10 +244,91 @@ function App() {
     [vehicles, activeStore]
   );
 
+  const availableMakes = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          vehiclesByStore
+            .map((entry) => entry.make.trim())
+            .filter(Boolean)
+            .sort((a, b) => a.localeCompare(b))
+        )
+      ),
+    [vehiclesByStore]
+  );
+
+  const filteredVehicles = useMemo(() => {
+    if (makeFilter === "Todas") return vehiclesByStore;
+    return vehiclesByStore.filter((entry) => entry.make === makeFilter);
+  }, [vehiclesByStore, makeFilter]);
+
+  const vehiclesByMake = useMemo(
+    () =>
+      availableMakes.map((make) => ({
+        make,
+        count: vehiclesByStore.filter((entry) => entry.make === make).length,
+      })),
+    [availableMakes, vehiclesByStore]
+  );
+
   const attendanceByStore = useMemo(
     () => attendance.filter((entry) => entry.store === activeStore),
     [attendance, activeStore]
   );
+
+  const employeesByStore = useMemo(
+    () => employees.filter((entry) => entry.store === activeStore),
+    [employees, activeStore]
+  );
+
+  const activeEmployeesByStore = useMemo(
+    () => employeesByStore.filter((entry) => entry.active),
+    [employeesByStore]
+  );
+
+  const selectedEmployee = useMemo(
+    () =>
+      activeEmployeesByStore.find(
+        (entry) =>
+          normalizeEmployeeCode(entry.employeeCode) ===
+          normalizeEmployeeCode(attendanceForm.employeeCode)
+      ) ?? null,
+    [activeEmployeesByStore, attendanceForm.employeeCode]
+  );
+
+  useEffect(() => {
+    if (makeFilter === "Todas") return;
+    if (availableMakes.includes(makeFilter)) return;
+    setMakeFilter("Todas");
+  }, [availableMakes, makeFilter]);
+
+  useEffect(() => {
+    if (!attendanceForm.employeeCode.trim()) {
+      setAttendanceForm((current) => ({
+        ...current,
+        employeeName: "",
+        role: "",
+      }));
+      return;
+    }
+
+    if (!selectedEmployee) return;
+
+    setAttendanceForm((current) => {
+      if (
+        current.employeeName === selectedEmployee.employeeName &&
+        current.role === selectedEmployee.role
+      ) {
+        return current;
+      }
+
+      return {
+        ...current,
+        employeeName: selectedEmployee.employeeName,
+        role: selectedEmployee.role,
+      };
+    });
+  }, [attendanceForm.employeeCode, selectedEmployee]);
 
   const activeShifts = useMemo(
     () => attendanceByStore.filter((entry) => !entry.clockOut),
@@ -230,27 +378,71 @@ function App() {
     setFeedback("Vehiculo registrado correctamente.");
   };
 
+  const handleEmployeeSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const employeeCode = normalizeEmployeeCode(employeeForm.employeeCode);
+    const employeeName = employeeForm.employeeName.trim();
+    const role = employeeForm.role.trim();
+
+    const duplicateEmployee = employees.some(
+      (entry) =>
+        normalizeEmployeeCode(entry.employeeCode) === employeeCode &&
+        entry.store === employeeForm.store
+    );
+
+    if (duplicateEmployee) {
+      setFeedback("Ese codigo ya existe en esta tienda.");
+      return;
+    }
+
+    const newEmployee: EmployeeEntry = {
+      id: crypto.randomUUID(),
+      employeeCode,
+      employeeName,
+      role,
+      store: employeeForm.store,
+      active: true,
+      createdAt: new Date().toISOString(),
+    };
+
+    setEmployees((current) => [newEmployee, ...current]);
+    setEmployeeForm(createEmployeeForm(activeStore));
+    setIsEmployeeModalOpen(false);
+    setFeedback("Empleado registrado correctamente.");
+  };
+
   const handleClockIn = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
+    const employeeCode = normalizeEmployeeCode(attendanceForm.employeeCode);
+    const employee = activeEmployeesByStore.find(
+      (entry) => normalizeEmployeeCode(entry.employeeCode) === employeeCode
+    );
+
+    if (!employee) {
+      setFeedback("Primero registra ese codigo en empleados.");
+      return;
+    }
+
     const duplicateOpenShift = attendance.some(
       (entry) =>
-        entry.employeeName.toLowerCase() ===
-          attendanceForm.employeeName.trim().toLowerCase() &&
+        normalizeEmployeeCode(entry.employeeCode) === employeeCode &&
         entry.store === attendanceForm.store &&
         entry.date === getTodayDate() &&
         !entry.clockOut
     );
 
     if (duplicateOpenShift) {
-      setFeedback("Ese empleado ya tiene una entrada abierta en esta tienda.");
+      setFeedback("Ese codigo ya tiene una entrada abierta en esta tienda.");
       return;
     }
 
     const newEntry: AttendanceEntry = {
       id: crypto.randomUUID(),
-      employeeName: attendanceForm.employeeName.trim(),
-      role: attendanceForm.role.trim(),
+      employeeCode,
+      employeeName: employee.employeeName,
+      role: employee.role,
       store: attendanceForm.store,
       date: getTodayDate(),
       clockIn: getCurrentTime(),
@@ -278,11 +470,39 @@ function App() {
     setFeedback("Salida de empleado registrada.");
   };
 
+  const openClockOutModal = (entry: AttendanceEntry) => {
+    setClockOutTarget(entry);
+    setClockOutCodeInput("");
+  };
+
+  const handleClockOutSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!clockOutTarget) {
+      setFeedback("Selecciona un empleado antes de marcar salida.");
+      return;
+    }
+
+    if (
+      normalizeEmployeeCode(clockOutCodeInput) !==
+      normalizeEmployeeCode(clockOutTarget.employeeCode)
+    ) {
+      setFeedback("El codigo no coincide con el empleado seleccionado.");
+      return;
+    }
+
+    handleClockOut(clockOutTarget.id);
+    setClockOutTarget(null);
+    setClockOutCodeInput("");
+  };
+
   const resetDemoData = () => {
     setVehicles([]);
     setAttendance([]);
+    setEmployees([]);
     localStorage.removeItem(VEHICLE_STORAGE_KEY);
     localStorage.removeItem(ATTENDANCE_STORAGE_KEY);
+    localStorage.removeItem(EMPLOYEES_STORAGE_KEY);
     setFeedback("Datos reiniciados.");
   };
 
@@ -298,10 +518,10 @@ function App() {
               </div>
               <div className="space-y-3">
                 <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">
-                  Registro digital para vehiculos y control de tiempo por tienda.
+                  Registro digital para vehiculos.
                 </h1>
                 <p className="max-w-2xl text-sm leading-6 text-stone-300 sm:text-base">
-                  La hoja en papel se convierte en un flujo operativo: se registra
+                  Flujo operativo: se registra
                   cada vehiculo, se marca su estado y cada empleado deja entrada y
                   salida desde la misma pantalla.
                 </p>
@@ -370,6 +590,9 @@ function App() {
                   }
                   required
                 />
+                <p className="text-xs text-stone-400">
+                  {formatDateWithWeekday(vehicleForm.date)}
+                </p>
               </Field>
 
               <Field label="Time">
@@ -520,15 +743,29 @@ function App() {
             </div>
 
             <form className="grid gap-4" onSubmit={handleClockIn}>
-              <Field label="Empleado">
+              <Field label="Codigo de empleado">
                 <Input
-                  value={attendanceForm.employeeName}
+                  value={attendanceForm.employeeCode}
                   onChange={(event) =>
                     setAttendanceForm((current) => ({
                       ...current,
-                      employeeName: event.target.value,
+                      employeeCode: event.target.value.toUpperCase(),
                     }))
                   }
+                  placeholder="EMP-001"
+                  required
+                />
+                <p className="text-xs text-stone-400">
+                  {selectedEmployee
+                    ? `${selectedEmployee.employeeName} · ${selectedEmployee.role}`
+                    : "Ingresa un codigo registrado para completar la entrada."}
+                </p>
+              </Field>
+
+              <Field label="Empleado">
+                <Input
+                  value={attendanceForm.employeeName}
+                  readOnly
                   placeholder="Nombre del empleado"
                   required
                 />
@@ -537,12 +774,7 @@ function App() {
               <Field label="Cargo">
                 <Input
                   value={attendanceForm.role}
-                  onChange={(event) =>
-                    setAttendanceForm((current) => ({
-                      ...current,
-                      role: event.target.value,
-                    }))
-                  }
+                  readOnly
                   placeholder="Lavador, supervisor, caja..."
                   required
                 />
@@ -566,6 +798,109 @@ function App() {
                   <LogIn className="mr-2 h-4 w-4" />
                   Marcar entrada
                 </Button>
+                <Dialog
+                  open={isEmployeeModalOpen}
+                  onOpenChange={setIsEmployeeModalOpen}
+                >
+                  <DialogTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="border-white/20 bg-white text-stone-950 hover:bg-stone-200"
+                    >
+                      Registro de empleado
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-2xl rounded-3xl border-white/10 bg-stone-950 p-6 text-stone-100">
+                    <DialogHeader>
+                      <DialogTitle className="text-white">
+                        Registro de empleados
+                      </DialogTitle>
+                      <DialogDescription className="text-stone-400">
+                        Cada codigo se crea una sola vez por tienda y luego se usa
+                        para marcar entrada.
+                      </DialogDescription>
+                    </DialogHeader>
+
+                    <form
+                      className="grid gap-4 md:grid-cols-3"
+                      onSubmit={handleEmployeeSubmit}
+                    >
+                      <Field label="Codigo">
+                        <Input
+                          value={employeeForm.employeeCode}
+                          onChange={(event) =>
+                            setEmployeeForm((current) => ({
+                              ...current,
+                              employeeCode: event.target.value.toUpperCase(),
+                            }))
+                          }
+                          placeholder="EMP-001"
+                          required
+                        />
+                      </Field>
+
+                      <Field label="Nombre">
+                        <Input
+                          value={employeeForm.employeeName}
+                          onChange={(event) =>
+                            setEmployeeForm((current) => ({
+                              ...current,
+                              employeeName: event.target.value,
+                            }))
+                          }
+                          placeholder="Nombre del empleado"
+                          required
+                        />
+                      </Field>
+
+                      <Field label="Cargo">
+                        <Input
+                          value={employeeForm.role}
+                          onChange={(event) =>
+                            setEmployeeForm((current) => ({
+                              ...current,
+                              role: event.target.value,
+                            }))
+                          }
+                          placeholder="Lavador, supervisor..."
+                          required
+                        />
+                      </Field>
+
+                      <div className="md:col-span-3 flex flex-wrap gap-3">
+                        <Button type="submit">Guardar empleado</Button>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          onClick={() => setEmployeeForm(createEmployeeForm(activeStore))}
+                        >
+                          Limpiar
+                        </Button>
+                        <Badge variant="secondary">
+                          {employeesByStore.length} empleados en {activeStore}
+                        </Badge>
+                      </div>
+                    </form>
+
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {employeesByStore.length ? (
+                        employeesByStore.map((entry) => (
+                          <div
+                            key={entry.id}
+                            className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-sm text-stone-300"
+                          >
+                            {entry.employeeCode} · {entry.employeeName} · {entry.role}
+                          </div>
+                        ))
+                      ) : (
+                        <span className="text-sm text-stone-400">
+                          Aun no hay empleados registrados en esta tienda.
+                        </span>
+                      )}
+                    </div>
+                  </DialogContent>
+                </Dialog>
                 <Button
                   type="button"
                   variant="secondary"
@@ -597,13 +932,15 @@ function App() {
                             {entry.employeeName}
                           </p>
                           <p className="text-sm text-stone-300">
-                            {entry.role} · Entrada {entry.clockIn}
+                            Codigo {entry.employeeCode || "Sin codigo"} · {entry.role} · Entrada{" "}
+                            {entry.clockIn}
                           </p>
                         </div>
                         <Button
                           type="button"
                           variant="outline"
-                          onClick={() => handleClockOut(entry.id)}
+                          className="border-white/20 bg-white text-stone-950 hover:bg-stone-200"
+                          onClick={() => openClockOutModal(entry)}
                         >
                           <LogOut className="mr-2 h-4 w-4" />
                           Marcar salida
@@ -634,6 +971,55 @@ function App() {
               </div>
             </div>
 
+            <div className="mb-5 grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+              <div className="space-y-2">
+                <Label>Filtrar por marca</Label>
+                <Select
+                  value={makeFilter}
+                  onChange={(event) => setMakeFilter(event.target.value)}
+                >
+                  <option value="Todas">Todas las marcas</option>
+                  {availableMakes.map((make) => (
+                    <option key={make} value={make}>
+                      {make}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <p className="text-sm font-medium text-stone-200">
+                    Vehiculos por marca
+                  </p>
+                  <Badge variant="secondary">{vehiclesByStore.length} total</Badge>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  {vehiclesByMake.length ? (
+                    vehiclesByMake.map(({ make, count }) => (
+                      <button
+                        key={make}
+                        type="button"
+                        onClick={() => setMakeFilter(make)}
+                        className={`rounded-full border px-3 py-1 text-sm transition ${
+                          makeFilter === make
+                            ? "border-amber-300/50 bg-amber-300/15 text-amber-100"
+                            : "border-white/10 bg-white/5 text-stone-300 hover:border-white/20 hover:text-white"
+                        }`}
+                      >
+                        {make} · {count}
+                      </button>
+                    ))
+                  ) : (
+                    <span className="text-sm text-stone-400">
+                      Aun no hay marcas registradas en esta tienda.
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
             <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
@@ -650,10 +1036,10 @@ function App() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {vehiclesByStore.length ? (
-                  vehiclesByStore.map((entry) => (
+                {filteredVehicles.length ? (
+                  filteredVehicles.map((entry) => (
                     <TableRow key={entry.id}>
-                      <TableCell>{entry.date}</TableCell>
+                      <TableCell>{formatDateWithWeekday(entry.date)}</TableCell>
                       <TableCell className="font-medium">{entry.stock}</TableCell>
                       <TableCell>{`${entry.make} ${entry.model}`}</TableCell>
                       <TableCell>{entry.vin || "-"}</TableCell>
@@ -684,7 +1070,9 @@ function App() {
                 ) : (
                   <TableRow>
                     <TableCell colSpan={10} className="py-8 text-center text-stone-400">
-                      Todavia no hay vehiculos registrados en {activeStore}.
+                      {makeFilter === "Todas"
+                        ? `Todavia no hay vehiculos registrados en ${activeStore}.`
+                        : `No hay vehiculos de la marca ${makeFilter} en ${activeStore}.`}
                     </TableCell>
                   </TableRow>
                 )}
@@ -712,7 +1100,8 @@ function App() {
                       <div>
                         <p className="font-semibold text-white">{entry.employeeName}</p>
                         <p className="text-sm text-stone-300">
-                          {entry.role} · {entry.date}
+                          Codigo {entry.employeeCode || "Sin codigo"} · {entry.role} ·{" "}
+                          {formatDateWithWeekday(entry.date)}
                         </p>
                       </div>
                       <Badge variant={entry.clockOut ? "success" : "warning"}>
@@ -743,6 +1132,59 @@ function App() {
           </div>
         </section>
       </div>
+
+      <Dialog
+        open={Boolean(clockOutTarget)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setClockOutTarget(null);
+            setClockOutCodeInput("");
+          }
+        }}
+      >
+        <DialogContent className="max-w-md rounded-3xl border-white/10 bg-stone-950 p-6 text-stone-100">
+          <DialogHeader>
+            <DialogTitle className="text-white">Confirmar salida</DialogTitle>
+            <DialogDescription className="text-stone-400">
+              {clockOutTarget
+                ? `Escribe el codigo de ${clockOutTarget.employeeName} para registrar la salida.`
+                : "Escribe el codigo del empleado para registrar la salida."}
+            </DialogDescription>
+          </DialogHeader>
+
+          <form className="space-y-4" onSubmit={handleClockOutSubmit}>
+            <Field label="Codigo de empleado">
+              <Input
+                value={clockOutCodeInput}
+                onChange={(event) => setClockOutCodeInput(event.target.value.toUpperCase())}
+                placeholder={clockOutTarget?.employeeCode ?? "EMP-001"}
+                required
+              />
+            </Field>
+
+            {clockOutTarget ? (
+              <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-stone-300">
+                {clockOutTarget.employeeName} · {clockOutTarget.role} · Entrada{" "}
+                {clockOutTarget.clockIn}
+              </div>
+            ) : null}
+
+            <div className="flex flex-wrap gap-3">
+              <Button type="submit">Confirmar salida</Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  setClockOutTarget(null);
+                  setClockOutCodeInput("");
+                }}
+              >
+                Cancelar
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }
@@ -809,6 +1251,20 @@ function parseTime(value: string) {
   const date = new Date();
   date.setHours(hours, minutes, 0, 0);
   return date;
+}
+
+function formatDateWithWeekday(value: string) {
+  if (!value) return "-";
+
+  const date = new Date(`${value}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+
+  const weekday = date.toLocaleDateString("es-US", { weekday: "long" });
+  return `${weekday.charAt(0).toUpperCase()}${weekday.slice(1)} ${value}`;
+}
+
+function normalizeEmployeeCode(value: string | null | undefined) {
+  return (value ?? "").trim().toUpperCase();
 }
 
 export default App;
