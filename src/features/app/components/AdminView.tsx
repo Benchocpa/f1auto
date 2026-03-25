@@ -6,6 +6,7 @@ import { STORES } from "../config";
 import type {
   AdminStoreStat,
   Language,
+  PayrollEmployeeSummary,
   StoreName,
   Translate,
   VehicleEntry,
@@ -16,9 +17,19 @@ import { MiniStat, StatCard, Field } from "./common";
 interface AdminViewProps {
   adminStoreStats: AdminStoreStat[];
   language: Language;
+  onClosePayrollPeriod: () => void;
+  onExportPayrollCsv: () => void;
   onJumpToStore: (store: StoreName) => void;
+  onPrintPayrollSummary: () => void;
   onResetDemoData: () => void;
   onSendReportPreview: () => void;
+  payrollClosedAtLabel: string;
+  payrollSummaries: PayrollEmployeeSummary[];
+  payrollTotals: {
+    regularHours: number;
+    overtimeHours: number;
+    totalHours: number;
+  };
   reportCompleted: number;
   reportStore: StoreName;
   reportTotal: number;
@@ -34,9 +45,15 @@ interface AdminViewProps {
 export function AdminView({
   adminStoreStats,
   language,
+  onClosePayrollPeriod,
+  onExportPayrollCsv,
   onJumpToStore,
+  onPrintPayrollSummary,
   onResetDemoData,
   onSendReportPreview,
+  payrollClosedAtLabel,
+  payrollSummaries,
+  payrollTotals,
   reportCompleted,
   reportStore,
   reportTotal,
@@ -116,6 +133,98 @@ export function AdminView({
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+        <div className="panel xl:col-span-2">
+          <div className="panel-header">
+            <div>
+              <p className="eyebrow">{t("Time control", "Control de tiempo")}</p>
+              <h2 className="panel-title">{t("Payroll summary and overtime", "Resumen de nomina y horas extra")}</h2>
+            </div>
+            <Badge variant="secondary">{reportStore}</Badge>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-[0.85fr_1.15fr]">
+            <div className="space-y-4 rounded-3xl border border-white/10 bg-white/5 p-5">
+              <Field label={t("Store for payroll", "Tienda para nomina")}>
+                <Select value={reportStore} onChange={(event) => setReportStore(event.target.value as StoreName)}>
+                  {STORES.map((store) => (
+                    <option key={store} value={store}>
+                      {store}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+
+              <div className="grid gap-3 sm:grid-cols-3">
+                <MiniStat label={t("Regular hours", "Horas regulares")} value={payrollTotals.regularHours.toFixed(2)} />
+                <MiniStat label={t("Overtime", "Horas extra")} value={payrollTotals.overtimeHours.toFixed(2)} />
+                <MiniStat label={t("Total hours", "Horas totales")} value={payrollTotals.totalHours.toFixed(2)} />
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-stone-900/80 px-4 py-3 text-sm text-stone-300">
+                {t("Current payroll period starts after", "El periodo actual de nomina empieza despues de")}: {payrollClosedAtLabel}
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <Button type="button" onClick={onExportPayrollCsv}>
+                  {t("Export Excel", "Exportar Excel")}
+                </Button>
+                <Button type="button" variant="secondary" onClick={onPrintPayrollSummary}>
+                  {t("Export PDF", "Exportar PDF")}
+                </Button>
+                <Button type="button" variant="destructive" onClick={onClosePayrollPeriod}>
+                  {t("Close payroll", "Cerrar nomina")}
+                </Button>
+              </div>
+            </div>
+
+            <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
+              <div className="mb-4">
+                <p className="text-xs uppercase tracking-[0.18em] text-stone-400">{t("Payroll details", "Detalle de nomina")}</p>
+                <h3 className="mt-2 text-xl font-semibold text-white">
+                  {t("Employee hours for current period", "Horas de empleados del periodo actual")}
+                </h3>
+              </div>
+
+              <div className="space-y-3">
+                {payrollSummaries.length ? (
+                  payrollSummaries.map((entry) => (
+                    <div key={entry.userId} className="rounded-2xl border border-white/10 bg-stone-900/70 p-4">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <p className="font-semibold text-white">{entry.employeeName}</p>
+                          <p className="text-sm text-stone-300">{entry.employeeCode} · {entry.jobTitle}</p>
+                        </div>
+                        {entry.overtimeHours > 0 ? (
+                          <Badge variant="warning">{t("Overtime", "Horas extra")}: {entry.overtimeHours.toFixed(2)}</Badge>
+                        ) : (
+                          <Badge variant="secondary">{t("Regular", "Regular")}</Badge>
+                        )}
+                      </div>
+
+                      <div className="mt-3 grid gap-2 text-sm text-stone-300 sm:grid-cols-2">
+                        <span>{t("Regular", "Regulares")}: {entry.regularHours.toFixed(2)}</span>
+                        <span>{t("Overtime", "Extra")}: {entry.overtimeHours.toFixed(2)}</span>
+                        <span>{t("Total", "Total")}: {entry.totalHours.toFixed(2)}</span>
+                        <span>{t("Open shifts", "Turnos abiertos")}: {entry.openShiftCount}</span>
+                      </div>
+
+                      {entry.alertCount ? (
+                        <p className="mt-3 text-sm text-amber-300">
+                          {t("Shift alerts", "Alertas de turno")}: {entry.alertCount}
+                        </p>
+                      ) : null}
+                    </div>
+                  ))
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-white/10 px-4 py-6 text-sm text-stone-400">
+                    {t("There are no payroll hours yet for this store.", "Aun no hay horas de nomina para esta tienda.")}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div className="panel xl:col-span-2">
           <div className="panel-header">
             <div>

@@ -3,6 +3,7 @@ import { DEFAULT_ADMIN_USER } from "../config";
 import type {
   AttendanceEntry,
   EmployeeEntry,
+  PayrollClosureEntry,
   UserEntry,
   VehicleEntry,
   VehicleHistoryEvent,
@@ -68,9 +69,17 @@ type UserRow = {
   created_at: string;
 };
 
+type PayrollClosureRow = {
+  id: string;
+  store: string;
+  closed_at: string;
+  closed_by: string;
+};
+
 const TABLES = {
   attendance: "attendance_entries",
   employees: "employees",
+  payrollClosures: "payroll_closures",
   users: "app_users",
   vehicles: "vehicles",
 } as const;
@@ -215,6 +224,24 @@ function mapUserEntry(entry: UserEntry): UserRow {
   };
 }
 
+function mapPayrollClosureRow(row: PayrollClosureRow): PayrollClosureEntry {
+  return {
+    id: row.id,
+    store: row.store as PayrollClosureEntry["store"],
+    closedAt: row.closed_at,
+    closedBy: row.closed_by,
+  };
+}
+
+function mapPayrollClosureEntry(entry: PayrollClosureEntry): PayrollClosureRow {
+  return {
+    id: entry.id,
+    store: entry.store,
+    closed_at: entry.closedAt,
+    closed_by: entry.closedBy,
+  };
+}
+
 async function replaceTable<T extends { id: string }>(table: string, rows: T[]) {
   const client = getClient();
 
@@ -243,17 +270,20 @@ export const supabaseRepository: AppRepository = {
       { data: vehiclesData, error: vehiclesError },
       { data: attendanceData, error: attendanceError },
       { data: employeesData, error: employeesError },
+      { data: payrollClosuresData, error: payrollClosuresError },
       { data: usersData, error: usersError },
     ] = await Promise.all([
       client.from(TABLES.vehicles).select("*").order("created_at", { ascending: false }),
       client.from(TABLES.attendance).select("*").order("date", { ascending: false }),
       client.from(TABLES.employees).select("*").order("created_at", { ascending: false }),
+      client.from(TABLES.payrollClosures).select("*").order("closed_at", { ascending: false }),
       client.from(TABLES.users).select("*").order("created_at", { ascending: false }),
     ]);
 
     if (vehiclesError) throw vehiclesError;
     if (attendanceError) throw attendanceError;
     if (employeesError) throw employeesError;
+    if (payrollClosuresError) throw payrollClosuresError;
     if (usersError) throw usersError;
 
     const users = (usersData as UserRow[] | null)?.map(mapUserRow) ?? [DEFAULT_ADMIN_USER];
@@ -261,6 +291,8 @@ export const supabaseRepository: AppRepository = {
     return {
       attendance: (attendanceData as AttendanceRow[] | null)?.map(mapAttendanceRow) ?? [],
       employees: (employeesData as EmployeeRow[] | null)?.map(mapEmployeeRow) ?? [],
+      payrollClosures:
+        (payrollClosuresData as PayrollClosureRow[] | null)?.map(mapPayrollClosureRow) ?? [],
       users,
       vehicles: (vehiclesData as VehicleRow[] | null)?.map(mapVehicleRow) ?? [],
     };
@@ -272,6 +304,10 @@ export const supabaseRepository: AppRepository = {
 
   async saveEmployees(employees) {
     await replaceTable(TABLES.employees, employees.map(mapEmployeeEntry));
+  },
+
+  async savePayrollClosures(payrollClosures) {
+    await replaceTable(TABLES.payrollClosures, payrollClosures.map(mapPayrollClosureEntry));
   },
 
   async saveUsers(users) {

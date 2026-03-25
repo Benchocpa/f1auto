@@ -17,6 +17,8 @@ import type {
   AppView,
   EmployeeEntry,
   LoginFormState,
+  PayrollClosureEntry,
+  PayrollEmployeeSummary,
   PasswordResetFormState,
   StoreName,
   Translate,
@@ -1022,21 +1024,29 @@ export function useAttendanceActions({
 }
 
 interface UseAdminActionsParams {
+  currentUser: UserEntry | null;
+  payrollClosures: PayrollClosureEntry[];
+  payrollSummaries: PayrollEmployeeSummary[];
   repository: AppRepository;
   reportStore: StoreName;
   setAttendance: Dispatch<SetStateAction<AttendanceEntry[]>>;
   setEmployees: Dispatch<SetStateAction<EmployeeEntry[]>>;
   setFeedback: Dispatch<SetStateAction<string | null>>;
+  setPayrollClosures: Dispatch<SetStateAction<PayrollClosureEntry[]>>;
   setVehicles: Dispatch<SetStateAction<VehicleEntry[]>>;
   t: Translate;
 }
 
 export function useAdminActions({
+  currentUser,
+  payrollClosures,
+  payrollSummaries,
   repository,
   reportStore,
   setAttendance,
   setEmployees,
   setFeedback,
+  setPayrollClosures,
   setVehicles,
   t,
 }: UseAdminActionsParams) {
@@ -1057,7 +1067,139 @@ export function useAdminActions({
     );
   }, [reportStore, setFeedback, t]);
 
+  const handleClosePayrollPeriod = useCallback(() => {
+    const closure: PayrollClosureEntry = {
+      id: crypto.randomUUID(),
+      store: reportStore,
+      closedAt: new Date().toISOString(),
+      closedBy: currentUser?.fullName ?? "Administrator",
+    };
+
+    setPayrollClosures((current) => [
+      closure,
+      ...current.filter((entry) => entry.store !== reportStore),
+    ]);
+    setFeedback(
+      t(
+        `Payroll period closed for ${reportStore}. Counters restarted from zero.`,
+        `Periodo de nomina cerrado para ${reportStore}. Los contadores empezaron de nuevo en cero.`
+      )
+    );
+  }, [currentUser?.fullName, reportStore, setFeedback, setPayrollClosures, t]);
+
+  const exportPayrollCsv = useCallback(() => {
+    const headers = [
+      "Employee Name",
+      "Employee Code",
+      "Job Title",
+      "Store",
+      "Regular Hours",
+      "Overtime Hours",
+      "Total Hours",
+      "Open Shifts",
+      "Alerts",
+    ];
+
+    const rows = payrollSummaries.map((entry) => [
+      entry.employeeName,
+      entry.employeeCode,
+      entry.jobTitle,
+      entry.store,
+      entry.regularHours.toFixed(2),
+      entry.overtimeHours.toFixed(2),
+      entry.totalHours.toFixed(2),
+      String(entry.openShiftCount),
+      String(entry.alertCount),
+    ]);
+
+    const csv = [headers, ...rows]
+      .map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `payroll-${reportStore.replace(/\s+/g, "-").toLowerCase()}.csv`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+
+    setFeedback(
+      t(
+        `Excel export ready for ${reportStore}.`,
+        `Exportacion a Excel lista para ${reportStore}.`
+      )
+    );
+  }, [payrollSummaries, reportStore, setFeedback, t]);
+
+  const handlePrintPayrollSummary = useCallback(() => {
+    const reportWindow = window.open("", "_blank", "width=980,height=720");
+    if (!reportWindow) {
+      setFeedback(
+        t(
+          "Allow pop-ups to export the payroll PDF.",
+          "Permite ventanas emergentes para exportar el PDF de nomina."
+        )
+      );
+      return;
+    }
+
+    const rows = payrollSummaries
+      .map(
+        (entry) => `
+          <tr>
+            <td>${entry.employeeName}</td>
+            <td>${entry.employeeCode}</td>
+            <td>${entry.jobTitle}</td>
+            <td>${entry.regularHours.toFixed(2)}</td>
+            <td>${entry.overtimeHours.toFixed(2)}</td>
+            <td>${entry.totalHours.toFixed(2)}</td>
+          </tr>
+        `
+      )
+      .join("");
+
+    reportWindow.document.write(`
+      <html>
+        <head>
+          <title>Payroll Summary</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 24px; }
+            h1 { margin-bottom: 4px; }
+            p { color: #555; }
+            table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+            th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+            th { background: #f4f4f4; }
+          </style>
+        </head>
+        <body>
+          <h1>Payroll Summary · ${reportStore}</h1>
+          <p>Generated ${new Date().toLocaleString()}</p>
+          <table>
+            <thead>
+              <tr>
+                <th>Employee</th>
+                <th>Code</th>
+                <th>Role</th>
+                <th>Regular Hours</th>
+                <th>Overtime Hours</th>
+                <th>Total Hours</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </body>
+      </html>
+    `);
+    reportWindow.document.close();
+    reportWindow.focus();
+    reportWindow.print();
+  }, [payrollSummaries, reportStore, setFeedback, t]);
+
   return {
+    exportPayrollCsv,
+    handleClosePayrollPeriod,
+    handlePrintPayrollSummary,
     handleSendReportPreview,
     resetDemoData,
   };

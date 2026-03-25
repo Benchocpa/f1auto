@@ -24,6 +24,7 @@ export const VEHICLE_STORAGE_KEY = "carwash-vehicles-v1";
 export const ATTENDANCE_STORAGE_KEY = "carwash-attendance-v1";
 export const EMPLOYEES_STORAGE_KEY = "carwash-employees-v1";
 export const USERS_STORAGE_KEY = "carwash-users-v1";
+export const PAYROLL_CLOSURES_STORAGE_KEY = "carwash-payroll-closures-v1";
 
 export const createVehicleForm = (store: StoreName): VehicleFormState => ({
   store,

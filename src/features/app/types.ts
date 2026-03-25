@@ -58,6 +58,13 @@ export interface EmployeeEntry {
   createdAt: string;
 }
 
+export interface PayrollClosureEntry {
+  id: string;
+  store: StoreName;
+  closedAt: string;
+  closedBy: string;
+}
+
 export interface UserEntry {
   id: string;
   authUserId?: string | null;
@@ -143,4 +150,17 @@ export interface AdminStoreStat {
   openShifts: number;
   pending: number;
   salesToday: number;
+}
+
+export interface PayrollEmployeeSummary {
+  userId: string;
+  employeeCode: string;
+  employeeName: string;
+  jobTitle: string;
+  store: StoreName;
+  regularHours: number;
+  overtimeHours: number;
+  totalHours: number;
+  openShiftCount: number;
+  alertCount: number;
 }

@@ -46,6 +46,8 @@ import type {
   EmployeeEntry,
   Language,
   LoginFormState,
+  PayrollClosureEntry,
+  PayrollEmployeeSummary,
   PasswordResetFormState,
   StoreName,
   Translate,
@@ -58,7 +60,9 @@ import type {
   VehicleStatus,
 } from "./features/app/types";
 import {
+  buildPayrollSummary,
   formatCurrency,
+  formatDateWithWeekday,
   getTodayDate,
   normalizeEmployeeCode,
 } from "./features/app/utils";
@@ -114,6 +118,7 @@ function App() {
   const [vehicles, setVehicles] = useState<VehicleEntry[]>([]);
   const [attendance, setAttendance] = useState<AttendanceEntry[]>([]);
   const [employees, setEmployees] = useState<EmployeeEntry[]>([]);
+  const [payrollClosures, setPayrollClosures] = useState<PayrollClosureEntry[]>([]);
   const [users, setUsers] = useState<UserEntry[]>([]);
   const [currentUser, setCurrentUser] = useState<UserEntry | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -122,9 +127,11 @@ function App() {
   const { hydrationError, isHydrated } = usePersistentAppData({
     attendance,
     employees,
+    payrollClosures,
     repository: appRepository,
     setAttendance,
     setEmployees,
+    setPayrollClosures,
     setUsers,
     setVehicles,
     users,
@@ -471,6 +478,34 @@ function App() {
     [reportVehicles]
   );
 
+  const latestPayrollClosure = useMemo(
+    () =>
+      payrollClosures
+        .filter((entry) => entry.store === reportStore)
+        .sort((a, b) => new Date(b.closedAt).getTime() - new Date(a.closedAt).getTime())[0] ?? null,
+    [payrollClosures, reportStore]
+  );
+
+  const payrollSummaries = useMemo<PayrollEmployeeSummary[]>(
+    () =>
+      buildPayrollSummary({
+        attendance,
+        payrollPeriodStart: latestPayrollClosure?.closedAt ?? null,
+        store: reportStore,
+        users,
+      }),
+    [attendance, latestPayrollClosure?.closedAt, reportStore, users]
+  );
+
+  const payrollTotals = useMemo(
+    () => ({
+      regularHours: payrollSummaries.reduce((sum, entry) => sum + entry.regularHours, 0),
+      overtimeHours: payrollSummaries.reduce((sum, entry) => sum + entry.overtimeHours, 0),
+      totalHours: payrollSummaries.reduce((sum, entry) => sum + entry.totalHours, 0),
+    }),
+    [payrollSummaries]
+  );
+
   const {
     handleAccountPasswordUpdate,
     handleUserBlockToggle,
@@ -531,12 +566,22 @@ function App() {
     usersByStore,
   });
 
-  const { handleSendReportPreview, resetDemoData } = useAdminActions({
+  const {
+    exportPayrollCsv,
+    handleClosePayrollPeriod,
+    handlePrintPayrollSummary,
+    handleSendReportPreview,
+    resetDemoData,
+  } = useAdminActions({
+    currentUser,
+    payrollClosures,
+    payrollSummaries,
     repository: appRepository,
     reportStore,
     setAttendance,
     setEmployees,
     setFeedback,
+    setPayrollClosures,
     setVehicles,
     t,
   });
@@ -1557,7 +1602,17 @@ function App() {
               setCurrentView("vehicles");
             }}
             onResetDemoData={resetDemoData}
+            onClosePayrollPeriod={handleClosePayrollPeriod}
+            onExportPayrollCsv={exportPayrollCsv}
+            onPrintPayrollSummary={handlePrintPayrollSummary}
             onSendReportPreview={handleSendReportPreview}
+            payrollClosedAtLabel={
+              latestPayrollClosure
+                ? formatDateWithWeekday(latestPayrollClosure.closedAt.slice(0, 10), language)
+                : t("Not closed yet", "Aun no se ha cerrado")
+            }
+            payrollSummaries={payrollSummaries}
+            payrollTotals={payrollTotals}
             reportCompleted={reportCompleted}
             reportStore={reportStore}
             reportTotal={reportTotal}

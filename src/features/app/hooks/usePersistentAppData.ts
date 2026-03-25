@@ -1,14 +1,22 @@
 import { useEffect, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
-import type { AttendanceEntry, EmployeeEntry, UserEntry, VehicleEntry } from "../types";
+import type {
+  AttendanceEntry,
+  EmployeeEntry,
+  PayrollClosureEntry,
+  UserEntry,
+  VehicleEntry,
+} from "../types";
 import type { AppRepository } from "../data/repository";
 
 interface UsePersistentAppDataParams {
   attendance: AttendanceEntry[];
   employees: EmployeeEntry[];
+  payrollClosures: PayrollClosureEntry[];
   repository: AppRepository;
   setAttendance: Dispatch<SetStateAction<AttendanceEntry[]>>;
   setEmployees: Dispatch<SetStateAction<EmployeeEntry[]>>;
+  setPayrollClosures: Dispatch<SetStateAction<PayrollClosureEntry[]>>;
   setUsers: Dispatch<SetStateAction<UserEntry[]>>;
   setVehicles: Dispatch<SetStateAction<VehicleEntry[]>>;
   users: UserEntry[];
@@ -18,9 +26,11 @@ interface UsePersistentAppDataParams {
 export function usePersistentAppData({
   attendance,
   employees,
+  payrollClosures,
   repository,
   setAttendance,
   setEmployees,
+  setPayrollClosures,
   setUsers,
   setVehicles,
   users,
@@ -41,6 +51,7 @@ export function usePersistentAppData({
         setVehicles(snapshot.vehicles);
         setAttendance(snapshot.attendance);
         setEmployees(snapshot.employees);
+        setPayrollClosures(snapshot.payrollClosures);
         setUsers(snapshot.users);
         isSavingEnabledRef.current = true;
         setHydrationError(null);
@@ -63,7 +74,7 @@ export function usePersistentAppData({
     return () => {
       cancelled = true;
     };
-  }, [repository, setAttendance, setEmployees, setUsers, setVehicles]);
+  }, [repository, setAttendance, setEmployees, setPayrollClosures, setUsers, setVehicles]);
 
   useEffect(() => {
     if (!isSavingEnabledRef.current) return;
@@ -79,6 +90,11 @@ export function usePersistentAppData({
     if (!isSavingEnabledRef.current) return;
     void repository.saveEmployees(employees);
   }, [employees, repository]);
+
+  useEffect(() => {
+    if (!isSavingEnabledRef.current) return;
+    void repository.savePayrollClosures(payrollClosures);
+  }, [payrollClosures, repository]);
 
   useEffect(() => {
     if (!isSavingEnabledRef.current) return;

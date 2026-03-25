@@ -2,6 +2,7 @@ import {
   ATTENDANCE_STORAGE_KEY,
   DEFAULT_ADMIN_USER,
   EMPLOYEES_STORAGE_KEY,
+  PAYROLL_CLOSURES_STORAGE_KEY,
   STORES,
   USERS_STORAGE_KEY,
   VEHICLE_STORAGE_KEY,
@@ -9,6 +10,7 @@ import {
 import type {
   AttendanceEntry,
   EmployeeEntry,
+  PayrollClosureEntry,
   UserEntry,
   VehicleEntry,
   VehicleHistoryAction,
@@ -109,6 +111,17 @@ function clearEmployees() {
   localStorage.removeItem(EMPLOYEES_STORAGE_KEY);
 }
 
+function loadPayrollClosures(): PayrollClosureEntry[] {
+  const parsedClosures = readJson<PayrollClosureEntry[]>(PAYROLL_CLOSURES_STORAGE_KEY);
+  if (!parsedClosures) return [];
+
+  return parsedClosures;
+}
+
+async function savePayrollClosures(payrollClosures: PayrollClosureEntry[]) {
+  writeJson(PAYROLL_CLOSURES_STORAGE_KEY, payrollClosures);
+}
+
 function loadUsers(): UserEntry[] {
   const parsedUsers = readJson<Array<UserEntry & { username?: string }>>(USERS_STORAGE_KEY);
   if (!parsedUsers) return [DEFAULT_ADMIN_USER];
@@ -138,6 +151,7 @@ async function load(): Promise<AppDataSnapshot> {
   return {
     attendance: loadAttendance(),
     employees: loadEmployees(),
+    payrollClosures: loadPayrollClosures(),
     users: loadUsers(),
     vehicles: loadVehicles(),
   };
@@ -154,6 +168,7 @@ export const localRepository: AppRepository = {
   load,
   saveAttendance,
   saveEmployees,
+  savePayrollClosures,
   saveUsers,
   saveVehicles,
 };
