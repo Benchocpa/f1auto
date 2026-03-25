@@ -594,17 +594,20 @@ export function useAuthActions({
   );
 
   const handleUserDelete = useCallback(
-    async (user: UserEntry) => {
+    async (user: UserEntry, adminPin: string) => {
       if (currentUser?.id === user.id) {
         setFeedback(
           t("You cannot delete your own account.", "No puedes eliminar tu propia cuenta.")
         );
-        return;
+        return false;
       }
 
       if (isSupabaseAuthEnabled && supabase) {
         try {
-          await callAdminEndpoint("/api/admin/delete-user", { id: user.id });
+          await callAdminEndpoint("/api/admin/delete-user", {
+            id: user.id,
+            adminPin: adminPin.trim(),
+          });
         } catch (error) {
           setFeedback(
             t(
@@ -612,12 +615,13 @@ export function useAuthActions({
               error instanceof Error ? error.message : "No se pudo eliminar el usuario."
             )
           );
-          return;
+          return false;
         }
       }
 
       setUsers((current) => current.filter((entry) => entry.id !== user.id));
       setFeedback(t("User deleted successfully.", "Usuario eliminado correctamente."));
+      return true;
     },
     [callAdminEndpoint, currentUser?.id, setFeedback, setUsers, t]
   );

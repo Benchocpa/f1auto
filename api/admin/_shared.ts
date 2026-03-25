@@ -80,7 +80,7 @@ export async function requireAdmin(request: any, response: any) {
 
   const { data: adminProfile, error: adminProfileError } = await admin
     .from("app_users")
-    .select("id, role, email, auth_user_id")
+    .select("id, role, email, auth_user_id, employee_code")
     .or(`auth_user_id.eq.${requester.id},email.eq.${requester.email}`)
     .maybeSingle();
 

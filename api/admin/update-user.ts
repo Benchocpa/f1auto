@@ -19,25 +19,40 @@ export default async function handler(request: any, response: any) {
       return;
     }
 
-    const { data: existingUser, error: existingUserError } = await admin
+    const normalizedEmail = String(email).trim().toLowerCase();
+    const normalizedEmployeeCode = String(employeeCode).trim().toUpperCase();
+    const normalizedPassword = typeof password === "string" ? password.trim() : "";
+
+    let { data: existingUser, error: existingUserError } = await admin
       .from("app_users")
       .select("*")
       .eq("id", String(id))
       .maybeSingle();
 
-    if (existingUserError || !existingUser) {
+    if (existingUserError) {
       json(response, 404, { error: "User not found." });
       return;
+    }
+
+    if (!existingUser) {
+      const { data: fallbackUser, error: fallbackUserError } = await admin
+        .from("app_users")
+        .select("*")
+        .or(`auth_user_id.eq.${adminProfile.auth_user_id},email.eq.${normalizedEmail}`)
+        .maybeSingle();
+
+      if (fallbackUserError || !fallbackUser) {
+        json(response, 404, { error: "User not found." });
+        return;
+      }
+
+      existingUser = fallbackUser;
     }
 
     if (adminProfile.id === existingUser.id && String(role) !== "admin") {
       json(response, 400, { error: "You cannot remove your own administrator role." });
       return;
     }
-
-    const normalizedEmail = String(email).trim().toLowerCase();
-    const normalizedEmployeeCode = String(employeeCode).trim().toUpperCase();
-    const normalizedPassword = typeof password === "string" ? password.trim() : "";
 
     if (normalizedPassword && normalizedPassword.length < 8) {
       json(response, 400, { error: "The new password must be at least 8 characters." });

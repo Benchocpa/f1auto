@@ -105,6 +105,8 @@ function App() {
   const [userForm, setUserForm] = useState<UserFormState>(() => createUserForm());
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
+  const [deleteUserTarget, setDeleteUserTarget] = useState<UserEntry | null>(null);
+  const [deleteUserPin, setDeleteUserPin] = useState("");
   const [clockOutTarget, setClockOutTarget] = useState<AttendanceEntry | null>(null);
   const [clockOutCodeInput, setClockOutCodeInput] = useState("");
   const [vehicles, setVehicles] = useState<VehicleEntry[]>([]);
@@ -1252,7 +1254,10 @@ function App() {
                             variant="destructive"
                             size="sm"
                             disabled={currentUser.id === user.id}
-                            onClick={() => void handleUserDelete(user)}
+                            onClick={() => {
+                              setDeleteUserTarget(user);
+                              setDeleteUserPin("");
+                            }}
                           >
                             <Trash2 className="mr-2 h-4 w-4" />
                             {t("Delete user", "Eliminar usuario")}
@@ -1262,6 +1267,77 @@ function App() {
                     </div>
                   ))}
                 </div>
+
+                <Dialog
+                  open={Boolean(deleteUserTarget)}
+                  onOpenChange={(open) => {
+                    if (!open) {
+                      setDeleteUserTarget(null);
+                      setDeleteUserPin("");
+                    }
+                  }}
+                >
+                  <DialogContent className="max-w-md rounded-3xl border-white/10 bg-stone-950 p-6 text-stone-100">
+                    <DialogHeader>
+                      <DialogTitle className="text-white">
+                        {t("Confirm user deletion", "Confirmar eliminacion de usuario")}
+                      </DialogTitle>
+                      <DialogDescription className="text-stone-400">
+                        {deleteUserTarget
+                          ? t(
+                              `Enter the administrator PIN to delete ${deleteUserTarget.fullName}.`,
+                              `Ingresa el PIN del administrador para eliminar a ${deleteUserTarget.fullName}.`
+                            )
+                          : t(
+                              "Enter the administrator PIN to continue.",
+                              "Ingresa el PIN del administrador para continuar."
+                            )}
+                      </DialogDescription>
+                    </DialogHeader>
+
+                    <form
+                      className="grid gap-4"
+                      onSubmit={async (event) => {
+                        event.preventDefault();
+                        if (!deleteUserTarget) return;
+                        const deleted = await handleUserDelete(deleteUserTarget, deleteUserPin);
+                        if (!deleted) return;
+                        setDeleteUserTarget(null);
+                        setDeleteUserPin("");
+                      }}
+                    >
+                      <Field label={t("Administrator PIN", "PIN del administrador")}>
+                        <Input
+                          type="password"
+                          inputMode="numeric"
+                          maxLength={4}
+                          value={deleteUserPin}
+                          onChange={(event) =>
+                            setDeleteUserPin(event.target.value.replace(/\D/g, "").slice(0, 4))
+                          }
+                          placeholder="1234"
+                          required
+                        />
+                      </Field>
+
+                      <div className="flex justify-end gap-3">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          onClick={() => {
+                            setDeleteUserTarget(null);
+                            setDeleteUserPin("");
+                          }}
+                        >
+                          {t("Cancel", "Cancelar")}
+                        </Button>
+                        <Button type="submit" variant="destructive">
+                          {t("Delete user", "Eliminar usuario")}
+                        </Button>
+                      </div>
+                    </form>
+                  </DialogContent>
+                </Dialog>
               </article>
             ) : null}
           </section>

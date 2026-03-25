@@ -12,10 +12,18 @@ export default async function handler(request: any, response: any) {
 
     const { admin, adminProfile } = context;
     const body = await parseBody(request);
-    const { id } = body ?? {};
+    const { id, adminPin } = body ?? {};
 
     if (!id) {
       json(response, 400, { error: "Missing user id." });
+      return;
+    }
+
+    const normalizedAdminPin = String(adminPin ?? "").trim().toUpperCase();
+    const normalizedStoredPin = String(adminProfile.employee_code ?? "").trim().toUpperCase();
+
+    if (!normalizedAdminPin || normalizedAdminPin !== normalizedStoredPin) {
+      json(response, 403, { error: "Invalid administrator PIN." });
       return;
     }
 
