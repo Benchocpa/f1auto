@@ -107,6 +107,8 @@ function App() {
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [deleteUserTarget, setDeleteUserTarget] = useState<UserEntry | null>(null);
   const [deleteUserPin, setDeleteUserPin] = useState("");
+  const [blockUserTarget, setBlockUserTarget] = useState<UserEntry | null>(null);
+  const [blockUserPin, setBlockUserPin] = useState("");
   const [clockOutTarget, setClockOutTarget] = useState<AttendanceEntry | null>(null);
   const [clockOutCodeInput, setClockOutCodeInput] = useState("");
   const [vehicles, setVehicles] = useState<VehicleEntry[]>([]);
@@ -1244,7 +1246,10 @@ function App() {
                             variant={user.isBlocked ? "secondary" : "outline"}
                             size="sm"
                             disabled={currentUser.id === user.id}
-                            onClick={() => void handleUserBlockToggle(user)}
+                            onClick={() => {
+                              setBlockUserTarget(user);
+                              setBlockUserPin("");
+                            }}
                           >
                             <Lock className="mr-2 h-4 w-4" />
                             {user.isBlocked ? t("Unblock user", "Desbloquear usuario") : t("Block user", "Bloquear usuario")}
@@ -1267,6 +1272,86 @@ function App() {
                     </div>
                   ))}
                 </div>
+
+                <Dialog
+                  open={Boolean(blockUserTarget)}
+                  onOpenChange={(open) => {
+                    if (!open) {
+                      setBlockUserTarget(null);
+                      setBlockUserPin("");
+                    }
+                  }}
+                >
+                  <DialogContent className="max-w-md rounded-3xl border-white/10 bg-stone-950 p-6 text-stone-100">
+                    <DialogHeader>
+                      <DialogTitle className="text-white">
+                        {blockUserTarget?.isBlocked
+                          ? t("Confirm user unlock", "Confirmar desbloqueo de usuario")
+                          : t("Confirm user block", "Confirmar bloqueo de usuario")}
+                      </DialogTitle>
+                      <DialogDescription className="text-stone-400">
+                        {blockUserTarget
+                          ? blockUserTarget.isBlocked
+                            ? t(
+                                `Enter the administrator PIN to unblock ${blockUserTarget.fullName}.`,
+                                `Ingresa el PIN del administrador para desbloquear a ${blockUserTarget.fullName}.`
+                              )
+                            : t(
+                                `Enter the administrator PIN to block ${blockUserTarget.fullName}.`,
+                                `Ingresa el PIN del administrador para bloquear a ${blockUserTarget.fullName}.`
+                              )
+                          : t(
+                              "Enter the administrator PIN to continue.",
+                              "Ingresa el PIN del administrador para continuar."
+                            )}
+                      </DialogDescription>
+                    </DialogHeader>
+
+                    <form
+                      className="grid gap-4"
+                      onSubmit={async (event) => {
+                        event.preventDefault();
+                        if (!blockUserTarget) return;
+                        const updated = await handleUserBlockToggle(blockUserTarget, blockUserPin);
+                        if (!updated) return;
+                        setBlockUserTarget(null);
+                        setBlockUserPin("");
+                      }}
+                    >
+                      <Field label={t("Administrator PIN", "PIN del administrador")}>
+                        <Input
+                          type="password"
+                          inputMode="numeric"
+                          maxLength={4}
+                          value={blockUserPin}
+                          onChange={(event) =>
+                            setBlockUserPin(event.target.value.replace(/\D/g, "").slice(0, 4))
+                          }
+                          placeholder="1234"
+                          required
+                        />
+                      </Field>
+
+                      <div className="flex justify-end gap-3">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          onClick={() => {
+                            setBlockUserTarget(null);
+                            setBlockUserPin("");
+                          }}
+                        >
+                          {t("Cancel", "Cancelar")}
+                        </Button>
+                        <Button type="submit" variant={blockUserTarget?.isBlocked ? "secondary" : "destructive"}>
+                          {blockUserTarget?.isBlocked
+                            ? t("Unblock user", "Desbloquear usuario")
+                            : t("Block user", "Bloquear usuario")}
+                        </Button>
+                      </div>
+                    </form>
+                  </DialogContent>
+                </Dialog>
 
                 <Dialog
                   open={Boolean(deleteUserTarget)}

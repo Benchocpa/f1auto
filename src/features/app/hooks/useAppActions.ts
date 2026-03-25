@@ -627,12 +627,12 @@ export function useAuthActions({
   );
 
   const handleUserBlockToggle = useCallback(
-    async (user: UserEntry) => {
+    async (user: UserEntry, adminPin: string) => {
       if (currentUser?.id === user.id) {
         setFeedback(
           t("You cannot block your own account.", "No puedes bloquear tu propia cuenta.")
         );
-        return;
+        return false;
       }
 
       const nextBlockedState = !user.isBlocked;
@@ -642,6 +642,7 @@ export function useAuthActions({
           const payload = await callAdminEndpoint("/api/admin/toggle-user-block", {
             id: user.id,
             block: nextBlockedState,
+            adminPin: adminPin.trim(),
           });
 
           setUsers((current) =>
@@ -662,7 +663,7 @@ export function useAuthActions({
               error instanceof Error ? error.message : "No se pudo actualizar el estado del usuario."
             )
           );
-          return;
+          return false;
         }
       } else {
         setUsers((current) =>
@@ -684,6 +685,7 @@ export function useAuthActions({
           nextBlockedState ? "Usuario bloqueado correctamente." : "Usuario desbloqueado correctamente."
         )
       );
+      return true;
     },
     [callAdminEndpoint, currentUser?.id, setFeedback, setUsers, t]
   );
