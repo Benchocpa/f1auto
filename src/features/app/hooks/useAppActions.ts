@@ -786,7 +786,7 @@ export function useVehicleActions({
           if (entry.id !== id || entry.status === status) return entry;
 
           const autoDeliveredTime =
-            status === "Completo" && !entry.deliveredTime ? getCurrentTime() : entry.deliveredTime;
+            status === "Entregado" && !entry.deliveredTime ? getCurrentTime() : entry.deliveredTime;
 
           return {
             ...entry,

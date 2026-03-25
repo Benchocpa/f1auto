@@ -425,13 +425,13 @@ function App() {
 
   const completedVehicles = useMemo(
     () =>
-      vehiclesByStore.filter((entry) => entry.status === "Completo").length,
+      vehiclesByStore.filter((entry) => entry.status === "Entregado").length,
     [vehiclesByStore]
   );
 
   const totalVehicles = vehicles.length;
   const totalCompletedVehicles = vehicles.filter(
-    (entry) => entry.status === "Completo"
+    (entry) => entry.status === "Entregado"
   ).length;
   const totalOpenShifts = attendance.filter((entry) => !entry.clockOut).length;
   const totalEmployees = users.length;
@@ -474,7 +474,7 @@ function App() {
   );
 
   const reportCompleted = useMemo(
-    () => reportVehicles.filter((entry) => entry.status === "Completo").length,
+    () => reportVehicles.filter((entry) => entry.status === "Entregado").length,
     [reportVehicles]
   );
 

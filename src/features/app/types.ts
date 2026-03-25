@@ -1,5 +1,5 @@
 export type StoreName = (typeof import("./config").STORES)[number];
-export type VehicleStatus = "Pendiente" | "Completo";
+export type VehicleStatus = "Pendiente" | "Entregado";
 export type AppView = "home" | "vehicles" | "time" | "admin";
 export type Language = "en" | "es";
 export type UserRole = "admin" | "operator";

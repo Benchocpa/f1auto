@@ -1,3 +1,4 @@
+import { useMemo, useState } from "react";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { Input } from "../../../components/ui/input";
@@ -68,6 +69,17 @@ export function VehicleView({
   vehicleFilters,
   vehicleForm,
 }: VehicleViewProps) {
+  const [areVehicleDetailsVisible, setAreVehicleDetailsVisible] = useState(false);
+
+  const pendingCount = useMemo(
+    () => filteredVehicles.filter((entry) => entry.status === "Pendiente").length,
+    [filteredVehicles]
+  );
+  const deliveredCount = useMemo(
+    () => filteredVehicles.filter((entry) => entry.status === "Entregado").length,
+    [filteredVehicles]
+  );
+
   return (
     <section className="space-y-6">
       <div className="panel">
@@ -75,55 +87,34 @@ export function VehicleView({
           <div>
             <p className="eyebrow">{t("Vehicle intake", "Ingreso de vehiculos")}</p>
             <h2 className="panel-title">
-              {t("Digital daily intake form", "Captura digital de la hoja diaria")}
+              {t("Fast intake and delivery board", "Captura rapida y panel de entregas")}
             </h2>
           </div>
           <Badge variant="secondary">{activeStore}</Badge>
         </div>
 
-        <form className="grid gap-4 md:grid-cols-2 xl:grid-cols-3" onSubmit={onSubmit}>
-          <Field label={t("Date", "Fecha")}>
-            <Input
-              type="date"
-              value={vehicleForm.date}
-              onChange={(event) =>
-                setVehicleForm((current) => ({
-                  ...current,
-                  date: event.target.value,
-                }))
-              }
-              required
-            />
-            <p className="text-xs text-stone-400">{formatDateWithWeekday(vehicleForm.date, language)}</p>
-          </Field>
+        <div className="mb-5 grid gap-3 sm:grid-cols-3">
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+            <p className="text-xs uppercase tracking-[0.18em] text-stone-400">
+              {t("Today sales", "Ventas de hoy")}
+            </p>
+            <p className="mt-2 text-2xl font-semibold text-white">{formatCurrency(todaySales)}</p>
+          </div>
+          <div className="rounded-2xl border border-amber-400/20 bg-amber-500/10 p-4">
+            <p className="text-xs uppercase tracking-[0.18em] text-amber-200">
+              {t("Pending", "Pendientes")}
+            </p>
+            <p className="mt-2 text-2xl font-semibold text-white">{pendingCount}</p>
+          </div>
+          <div className="rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-4">
+            <p className="text-xs uppercase tracking-[0.18em] text-emerald-200">
+              {t("Delivered", "Entregados")}
+            </p>
+            <p className="mt-2 text-2xl font-semibold text-white">{deliveredCount}</p>
+          </div>
+        </div>
 
-          <Field label={t("Drop-off time", "Hora de entrada")}>
-            <Input
-              type="time"
-              value={vehicleForm.time}
-              onChange={(event) =>
-                setVehicleForm((current) => ({
-                  ...current,
-                  time: event.target.value,
-                }))
-              }
-              required
-            />
-          </Field>
-
-          <Field label={t("Pickup time", "Hora de recogida")}>
-            <Input
-              type="time"
-              value={vehicleForm.pickupTime}
-              onChange={(event) =>
-                setVehicleForm((current) => ({
-                  ...current,
-                  pickupTime: event.target.value,
-                }))
-              }
-            />
-          </Field>
-
+        <form className="grid gap-4 md:grid-cols-2 xl:grid-cols-4" onSubmit={onSubmit}>
           <Field label={t("Stock / Plate", "Stock / Placa")}>
             <Input
               value={vehicleForm.stock}
@@ -133,21 +124,8 @@ export function VehicleView({
                   stock: event.target.value,
                 }))
               }
+              className="h-12 rounded-2xl"
               placeholder={t("Internal number or plate", "Numero interno o placa")}
-              required
-            />
-          </Field>
-
-          <Field label={t("Sales person", "Sales Person")}>
-            <Input
-              value={vehicleForm.salesPerson}
-              onChange={(event) =>
-                setVehicleForm((current) => ({
-                  ...current,
-                  salesPerson: event.target.value,
-                }))
-              }
-              placeholder={t("Receiving employee", "Empleado que recibe")}
               required
             />
           </Field>
@@ -161,6 +139,7 @@ export function VehicleView({
                   make: event.target.value,
                 }))
               }
+              className="h-12 rounded-2xl"
               placeholder={t("Brand", "Marca")}
               required
             />
@@ -175,21 +154,71 @@ export function VehicleView({
                   model: event.target.value,
                 }))
               }
+              className="h-12 rounded-2xl"
               placeholder={t("Model", "Modelo")}
               required
             />
           </Field>
 
-          <Field label="VIN">
+          <Field label={t("Sales person", "Responsable")}>
             <Input
-              value={vehicleForm.vin}
+              value={vehicleForm.salesPerson}
               onChange={(event) =>
                 setVehicleForm((current) => ({
                   ...current,
-                  vin: event.target.value,
+                  salesPerson: event.target.value,
                 }))
               }
-              placeholder={t("VIN or identifier", "VIN o identificador")}
+              className="h-12 rounded-2xl"
+              placeholder={t("Receiving employee", "Empleado que recibe")}
+              required
+            />
+          </Field>
+
+          <Field label={t("Date", "Fecha")}>
+            <Input
+              type="date"
+              value={vehicleForm.date}
+              onChange={(event) =>
+                setVehicleForm((current) => ({
+                  ...current,
+                  date: event.target.value,
+                }))
+              }
+              className="h-12 rounded-2xl"
+              required
+            />
+            <p className="text-xs text-stone-400">
+              {formatDateWithWeekday(vehicleForm.date, language)}
+            </p>
+          </Field>
+
+          <Field label={t("Drop-off time", "Hora de entrada")}>
+            <Input
+              type="time"
+              value={vehicleForm.time}
+              onChange={(event) =>
+                setVehicleForm((current) => ({
+                  ...current,
+                  time: event.target.value,
+                }))
+              }
+              className="h-12 rounded-2xl"
+              required
+            />
+          </Field>
+
+          <Field label={t("Pickup time", "Hora de recogida")}>
+            <Input
+              type="time"
+              value={vehicleForm.pickupTime}
+              onChange={(event) =>
+                setVehicleForm((current) => ({
+                  ...current,
+                  pickupTime: event.target.value,
+                }))
+              }
+              className="h-12 rounded-2xl"
             />
           </Field>
 
@@ -205,41 +234,88 @@ export function VehicleView({
                   price: event.target.value,
                 }))
               }
+              className="h-12 rounded-2xl"
               placeholder="0.00"
             />
           </Field>
 
-          <Field label={t("Service / SIMO", "SIMO / Servicio")} className="md:col-span-2 xl:col-span-3">
-            <Input
-              value={vehicleForm.simo}
-              onChange={(event) =>
-                setVehicleForm((current) => ({
-                  ...current,
-                  simo: event.target.value,
-                }))
-              }
-              placeholder={t("Service type, package, or SIMO", "Tipo de servicio, paquete o SIMO")}
-            />
-          </Field>
-
-          <Field label={t("Comments", "Comentarios")} className="md:col-span-2 xl:col-span-3">
-            <Textarea
-              value={vehicleForm.comments}
-              onChange={(event) =>
-                setVehicleForm((current) => ({
-                  ...current,
-                  comments: event.target.value,
-                }))
-              }
-              placeholder={t("Vehicle notes or instructions", "Observaciones del vehiculo o instrucciones")}
-            />
-          </Field>
-
-          <div className="md:col-span-2 xl:col-span-3 flex flex-wrap gap-3">
-            <Button type="submit">{t("Save vehicle", "Guardar ingreso")}</Button>
+          <div className="md:col-span-2 xl:col-span-4">
             <Button
               type="button"
               variant="secondary"
+              onClick={() => setAreVehicleDetailsVisible((current) => !current)}
+            >
+              {areVehicleDetailsVisible
+                ? t("Hide optional details", "Ocultar detalles opcionales")
+                : t("Show optional details", "Mostrar detalles opcionales")}
+            </Button>
+          </div>
+
+          {areVehicleDetailsVisible ? (
+            <>
+              <Field label="VIN" className="md:col-span-2 xl:col-span-2">
+                <Input
+                  value={vehicleForm.vin}
+                  onChange={(event) =>
+                    setVehicleForm((current) => ({
+                      ...current,
+                      vin: event.target.value,
+                    }))
+                  }
+                  className="h-12 rounded-2xl"
+                  placeholder={t("VIN or identifier", "VIN o identificador")}
+                />
+              </Field>
+
+              <Field
+                label={t("Service / SIMO", "SIMO / Servicio")}
+                className="md:col-span-2 xl:col-span-2"
+              >
+                <Input
+                  value={vehicleForm.simo}
+                  onChange={(event) =>
+                    setVehicleForm((current) => ({
+                      ...current,
+                      simo: event.target.value,
+                    }))
+                  }
+                  className="h-12 rounded-2xl"
+                  placeholder={t(
+                    "Service type, package, or SIMO",
+                    "Tipo de servicio, paquete o SIMO"
+                  )}
+                />
+              </Field>
+
+              <Field
+                label={t("Comments", "Comentarios")}
+                className="md:col-span-2 xl:col-span-4"
+              >
+                <Textarea
+                  value={vehicleForm.comments}
+                  onChange={(event) =>
+                    setVehicleForm((current) => ({
+                      ...current,
+                      comments: event.target.value,
+                    }))
+                  }
+                  placeholder={t(
+                    "Vehicle notes or instructions",
+                    "Observaciones del vehiculo o instrucciones"
+                  )}
+                />
+              </Field>
+            </>
+          ) : null}
+
+          <div className="md:col-span-2 xl:col-span-4 flex flex-wrap gap-3">
+            <Button type="submit" className="h-12 rounded-2xl px-6 text-base">
+              {t("Save vehicle", "Guardar ingreso")}
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              className="h-12 rounded-2xl px-6 text-base"
               onClick={() => setVehicleForm(createVehicleForm(activeStore))}
             >
               {t("Clear form", "Limpiar formulario")}
@@ -252,7 +328,9 @@ export function VehicleView({
         <div className="panel-header">
           <div>
             <p className="eyebrow">{t("Daily operations", "Operacion diaria")}</p>
-            <h2 className="panel-title">{t("Vehicle operations board", "Panel operativo de vehiculos")}</h2>
+            <h2 className="panel-title">
+              {t("Vehicle operations board", "Panel operativo de vehiculos")}
+            </h2>
           </div>
           <div className="flex items-center gap-2">
             <Button
@@ -260,17 +338,72 @@ export function VehicleView({
               variant="secondary"
               onClick={() => setAreVehicleFiltersVisible((current) => !current)}
             >
-              {areVehicleFiltersVisible ? t("Hide filters", "Ocultar filtros") : t("Filters", "Filtros")}
+              {areVehicleFiltersVisible
+                ? t("Hide filters", "Ocultar filtros")
+                : t("More filters", "Mas filtros")}
             </Button>
-            <Badge variant="secondary">{filteredVehicles.length} {t("results", "resultados")}</Badge>
-            <Badge variant="success">{formatCurrency(todaySales)}</Badge>
+            <Badge variant="secondary">
+              {filteredVehicles.length} {t("results", "resultados")}
+            </Badge>
           </div>
+        </div>
+
+        <div className="mb-4 grid gap-3 lg:grid-cols-[1.2fr_0.8fr_0.8fr]">
+          <Field label={t("Search", "Busqueda")}>
+            <Input
+              value={vehicleFilters.search}
+              onChange={(event) =>
+                setVehicleFilters((current) => ({
+                  ...current,
+                  search: event.target.value,
+                }))
+              }
+              className="h-12 rounded-2xl"
+              placeholder={t(
+                "Stock, VIN, make, model, sales person...",
+                "Stock, VIN, marca, modelo, responsable..."
+              )}
+            />
+          </Field>
+
+          <Field label={t("Status", "Estado")}>
+            <Select
+              value={vehicleFilters.status}
+              onChange={(event) =>
+                setVehicleFilters((current) => ({
+                  ...current,
+                  status: event.target.value as VehicleFiltersState["status"],
+                }))
+              }
+              className="h-12 rounded-2xl"
+            >
+              <option value="all">{t("All statuses", "Todos los estados")}</option>
+              <option value="Pendiente">{t("Pending", "Pendiente")}</option>
+              <option value="Entregado">{t("Delivered", "Entregado")}</option>
+            </Select>
+          </Field>
+
+          <Field label={t("Date", "Fecha")}>
+            <Input
+              type="date"
+              value={vehicleFilters.date}
+              onChange={(event) =>
+                setVehicleFilters((current) => ({
+                  ...current,
+                  date: event.target.value,
+                }))
+              }
+              className="h-12 rounded-2xl"
+            />
+          </Field>
         </div>
 
         {areVehicleFiltersVisible ? (
           <div className="mb-5 rounded-2xl border border-white/10 bg-white/5 p-4">
-            <div className="mb-4 flex items-center justify-between gap-3">
-              <p className="text-sm font-medium text-stone-200">{t("Advanced filters", "Filtros avanzados")}</p>
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm font-medium text-stone-200">
+                {t("Advanced filters", "Filtros avanzados")}
+              </p>
               <Button
                 type="button"
                 variant="secondary"
@@ -284,48 +417,6 @@ export function VehicleView({
             </div>
 
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              <Field label={t("Search", "Busqueda")}>
-                <Input
-                  value={vehicleFilters.search}
-                  onChange={(event) =>
-                    setVehicleFilters((current) => ({
-                      ...current,
-                      search: event.target.value,
-                    }))
-                  }
-                  placeholder={t("Stock, make, VIN, service...", "Stock, marca, VIN, servicio...")}
-                />
-              </Field>
-
-              <Field label={t("Date", "Fecha")}>
-                <Input
-                  type="date"
-                  value={vehicleFilters.date}
-                  onChange={(event) =>
-                    setVehicleFilters((current) => ({
-                      ...current,
-                      date: event.target.value,
-                    }))
-                  }
-                />
-              </Field>
-
-              <Field label={t("Status", "Estado")}>
-                <Select
-                  value={vehicleFilters.status}
-                  onChange={(event) =>
-                    setVehicleFilters((current) => ({
-                      ...current,
-                      status: event.target.value as VehicleFiltersState["status"],
-                    }))
-                  }
-                >
-                  <option value="all">{t("All statuses", "Todos los estados")}</option>
-                  <option value="Pendiente">{t("Pending", "Pendiente")}</option>
-                  <option value="Completo">{t("Complete", "Completo")}</option>
-                </Select>
-              </Field>
-
               <Field label={t("Make", "Marca")}>
                 <Select value={makeFilter} onChange={(event) => setMakeFilter(event.target.value)}>
                   <option value="Todas">{t("All makes", "Todas las marcas")}</option>
@@ -337,7 +428,7 @@ export function VehicleView({
                 </Select>
               </Field>
 
-              <Field label={t("Sales person", "Vendedor")}>
+              <Field label={t("Sales person", "Responsable")}>
                 <Select
                   value={vehicleFilters.salesPerson || "all"}
                   onChange={(event) =>
@@ -347,7 +438,7 @@ export function VehicleView({
                     }))
                   }
                 >
-                  <option value="all">{t("All sales people", "Todos los vendedores")}</option>
+                  <option value="all">{t("All sales people", "Todos los responsables")}</option>
                   {availableSalesPeople.map((person) => (
                     <option key={person} value={person}>
                       {person}
@@ -386,14 +477,11 @@ export function VehicleView({
               <TableHead>{t("Date", "Fecha")}</TableHead>
               <TableHead>{t("Stock", "Stock")}</TableHead>
               <TableHead>{t("Store", "Tienda")}</TableHead>
-              <TableHead>{t("Make / Model", "Make / Model")}</TableHead>
-              <TableHead>VIN</TableHead>
-              <TableHead>{t("Sales person", "Sales Person")}</TableHead>
+              <TableHead>{t("Vehicle", "Vehiculo")}</TableHead>
+              <TableHead>{t("Responsible", "Responsable")}</TableHead>
               <TableHead>{t("Drop-off", "Entrada")}</TableHead>
               <TableHead>{t("Pickup", "Recogida")}</TableHead>
               <TableHead>{t("Delivered", "Entrega real")}</TableHead>
-              <TableHead>{t("Service", "SIMO")}</TableHead>
-              <TableHead>{t("Comments", "Comentarios")}</TableHead>
               <TableHead>{t("Price", "Precio")}</TableHead>
               <TableHead>{t("Status", "Estado")}</TableHead>
             </TableRow>
@@ -405,8 +493,10 @@ export function VehicleView({
                   <TableCell>{formatDateWithWeekday(entry.date, language)}</TableCell>
                   <TableCell className="font-medium">{entry.stock}</TableCell>
                   <TableCell>{entry.store}</TableCell>
-                  <TableCell>{`${entry.make} ${entry.model}`}</TableCell>
-                  <TableCell>{entry.vin || "-"}</TableCell>
+                  <TableCell>
+                    <div className="font-medium text-white">{`${entry.make} ${entry.model}`}</div>
+                    <div className="text-xs text-stone-400">{entry.vin || "-"}</div>
+                  </TableCell>
                   <TableCell>{entry.salesPerson}</TableCell>
                   <TableCell>{entry.time}</TableCell>
                   <TableCell>{entry.pickupTime || "-"}</TableCell>
@@ -414,29 +504,34 @@ export function VehicleView({
                     <Input
                       type="time"
                       value={entry.deliveredTime}
-                      onChange={(event) => updateVehicleDeliveredTime(entry.id, event.target.value)}
+                      onChange={(event) =>
+                        updateVehicleDeliveredTime(entry.id, event.target.value)
+                      }
                       className="min-w-[120px]"
                     />
                   </TableCell>
-                  <TableCell>{entry.simo || "-"}</TableCell>
-                  <TableCell className="max-w-[220px]">{entry.comments || "-"}</TableCell>
                   <TableCell>{formatCurrency(entry.price)}</TableCell>
                   <TableCell>
                     <Select
                       value={entry.status}
-                      onChange={(event) => updateVehicleStatus(entry.id, event.target.value as VehicleStatus)}
+                      onChange={(event) =>
+                        updateVehicleStatus(entry.id, event.target.value as VehicleStatus)
+                      }
                       className="min-w-[130px]"
                     >
                       <option value="Pendiente">{t("Pending", "Pendiente")}</option>
-                      <option value="Completo">{t("Complete", "Completo")}</option>
+                      <option value="Entregado">{t("Delivered", "Entregado")}</option>
                     </Select>
                   </TableCell>
                 </TableRow>
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={13} className="py-8 text-center text-stone-400">
-                  {t("No vehicles match the selected filters.", "No hay vehiculos que coincidan con los filtros seleccionados.")}
+                <TableCell colSpan={10} className="py-8 text-center text-stone-400">
+                  {t(
+                    "No vehicles match the selected filters.",
+                    "No hay vehiculos que coincidan con los filtros seleccionados."
+                  )}
                 </TableCell>
               </TableRow>
             )}
@@ -447,7 +542,9 @@ export function VehicleView({
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
               <p className="eyebrow">{t("Vehicle history", "Historial de vehiculos")}</p>
-              <h3 className="text-xl font-semibold text-white">{t("Recent activity timeline", "Linea de tiempo reciente")}</h3>
+              <h3 className="text-xl font-semibold text-white">
+                {t("Recent activity timeline", "Linea de tiempo reciente")}
+              </h3>
             </div>
             <Badge variant="secondary">{filteredVehicles.length}</Badge>
           </div>
@@ -455,7 +552,10 @@ export function VehicleView({
           <div className="space-y-4">
             {filteredVehicles.length ? (
               filteredVehicles.slice(0, 8).map((entry) => (
-                <article key={`history-${entry.id}`} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                <article
+                  key={`history-${entry.id}`}
+                  className="rounded-2xl border border-white/10 bg-white/5 p-4"
+                >
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                     <div>
                       <p className="text-lg font-semibold text-white">
@@ -466,16 +566,29 @@ export function VehicleView({
                       </p>
                     </div>
                     <div className="text-sm text-stone-300">
-                      {t("Last update", "Ultima actualizacion")}: {formatTimestamp(entry.updatedAt, language)}
+                      {t("Last update", "Ultima actualizacion")}:{" "}
+                      {formatTimestamp(entry.updatedAt, language)}
                     </div>
                   </div>
 
                   <div className="mt-4 grid gap-2 text-sm text-stone-300 md:grid-cols-2 xl:grid-cols-4">
-                    <span>{t("Status", "Estado")}: {entry.status === "Completo" ? t("Complete", "Completo") : t("Pending", "Pendiente")}</span>
+                    <span>
+                      {t("Status", "Estado")}:{" "}
+                      {entry.status === "Entregado"
+                        ? t("Delivered", "Entregado")
+                        : t("Pending", "Pendiente")}
+                    </span>
                     <span>{t("Pickup target", "Recogida estimada")}: {entry.pickupTime || "-"}</span>
                     <span>{t("Actual delivery", "Entrega real")}: {entry.deliveredTime || "-"}</span>
                     <span>{t("Updated by", "Actualizado por")}: {entry.updatedBy}</span>
                   </div>
+
+                  {entry.comments || entry.simo ? (
+                    <div className="mt-4 grid gap-2 text-sm text-stone-400 md:grid-cols-2">
+                      <span>{t("Service", "Servicio")}: {entry.simo || "-"}</span>
+                      <span>{t("Comments", "Comentarios")}: {entry.comments || "-"}</span>
+                    </div>
+                  ) : null}
 
                   <div className="mt-4 space-y-2 border-t border-white/10 pt-4">
                     {entry.history.slice(0, 4).map((eventItem) => (

@@ -353,8 +353,8 @@ export function AdminView({
                           <p className="font-semibold text-white">{entry.make} {entry.model}</p>
                           <p className="text-sm text-stone-300">{entry.stock} · {entry.salesPerson}</p>
                         </div>
-                        <Badge variant={entry.status === "Completo" ? "success" : "warning"}>
-                          {entry.status === "Completo" ? t("Complete", "Completo") : t("Pending", "Pendiente")}
+                        <Badge variant={entry.status === "Entregado" ? "success" : "warning"}>
+                          {entry.status === "Entregado" ? t("Delivered", "Entregado") : t("Pending", "Pendiente")}
                         </Badge>
                       </div>
 
