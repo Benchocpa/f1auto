@@ -1,6 +1,9 @@
+import { useState } from "react";
 import { Clock3, LayoutDashboard, TimerReset, Users, CarFront } from "lucide-react";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../../../components/ui/dialog";
+import { Input } from "../../../components/ui/input";
 import { Select } from "../../../components/ui/select";
 import { STORES } from "../config";
 import type {
@@ -17,7 +20,7 @@ import { MiniStat, StatCard, Field } from "./common";
 interface AdminViewProps {
   adminStoreStats: AdminStoreStat[];
   language: Language;
-  onClosePayrollPeriod: () => void;
+  onClosePayrollPeriod: (adminPin: string) => boolean;
   onExportPayrollCsv: () => void;
   onJumpToStore: (store: StoreName) => void;
   onPrintPayrollSummary: () => void;
@@ -65,6 +68,8 @@ export function AdminView({
   totalVehicles,
   vehicles,
 }: AdminViewProps) {
+  const [isPayrollCloseDialogOpen, setIsPayrollCloseDialogOpen] = useState(false);
+  const [payrollClosePin, setPayrollClosePin] = useState("");
   const globalPending = adminStoreStats.reduce((sum, item) => sum + item.pending, 0);
   const globalSales = adminStoreStats.reduce((sum, item) => sum + item.salesToday, 0);
   const globalMakes = Array.from(
@@ -171,7 +176,14 @@ export function AdminView({
                 <Button type="button" variant="secondary" onClick={onPrintPayrollSummary}>
                   {t("Export PDF", "Exportar PDF")}
                 </Button>
-                <Button type="button" variant="destructive" onClick={onClosePayrollPeriod}>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  onClick={() => {
+                    setPayrollClosePin("");
+                    setIsPayrollCloseDialogOpen(true);
+                  }}
+                >
                   {t("Close payroll", "Cerrar nomina")}
                 </Button>
               </div>
@@ -223,6 +235,63 @@ export function AdminView({
               </div>
             </div>
           </div>
+
+          <Dialog open={isPayrollCloseDialogOpen} onOpenChange={setIsPayrollCloseDialogOpen}>
+            <DialogContent className="max-w-md rounded-3xl border-white/10 bg-stone-950 p-6 text-stone-100">
+              <DialogHeader>
+                <DialogTitle className="text-white">
+                  {t("Confirm payroll close", "Confirmar cierre de nomina")}
+                </DialogTitle>
+                <DialogDescription className="text-stone-400">
+                  {t(
+                    `Enter the administrator PIN to close payroll for ${reportStore}. This will restart the current period counters without deleting the history.`,
+                    `Ingresa el PIN del administrador para cerrar la nomina de ${reportStore}. Esto reiniciara los contadores del periodo actual sin borrar el historial.`
+                  )}
+                </DialogDescription>
+              </DialogHeader>
+
+              <form
+                className="grid gap-4"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  const closed = onClosePayrollPeriod(payrollClosePin);
+                  if (!closed) return;
+                  setIsPayrollCloseDialogOpen(false);
+                  setPayrollClosePin("");
+                }}
+              >
+                <Field label={t("Administrator PIN", "PIN del administrador")}>
+                  <Input
+                    type="password"
+                    inputMode="numeric"
+                    maxLength={4}
+                    value={payrollClosePin}
+                    onChange={(event) =>
+                      setPayrollClosePin(event.target.value.replace(/\D/g, "").slice(0, 4))
+                    }
+                    placeholder="1234"
+                    required
+                  />
+                </Field>
+
+                <div className="flex justify-end gap-3">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => {
+                      setIsPayrollCloseDialogOpen(false);
+                      setPayrollClosePin("");
+                    }}
+                  >
+                    {t("Cancel", "Cancelar")}
+                  </Button>
+                  <Button type="submit" variant="destructive">
+                    {t("Close payroll", "Cerrar nomina")}
+                  </Button>
+                </div>
+              </form>
+            </DialogContent>
+          </Dialog>
         </div>
 
         <div className="panel xl:col-span-2">

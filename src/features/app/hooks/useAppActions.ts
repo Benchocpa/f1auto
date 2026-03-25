@@ -1067,7 +1067,20 @@ export function useAdminActions({
     );
   }, [reportStore, setFeedback, t]);
 
-  const handleClosePayrollPeriod = useCallback(() => {
+  const handleClosePayrollPeriod = useCallback((adminPin: string) => {
+    const normalizedAdminPin = normalizeEmployeeCode(adminPin);
+    const normalizedCurrentPin = normalizeEmployeeCode(currentUser?.employeeCode);
+
+    if (!normalizedAdminPin || normalizedAdminPin !== normalizedCurrentPin) {
+      setFeedback(
+        t(
+          "Invalid administrator PIN.",
+          "PIN de administrador invalido."
+        )
+      );
+      return false;
+    }
+
     const closure: PayrollClosureEntry = {
       id: crypto.randomUUID(),
       store: reportStore,
@@ -1085,7 +1098,8 @@ export function useAdminActions({
         `Periodo de nomina cerrado para ${reportStore}. Los contadores empezaron de nuevo en cero.`
       )
     );
-  }, [currentUser?.fullName, reportStore, setFeedback, setPayrollClosures, t]);
+    return true;
+  }, [currentUser?.employeeCode, currentUser?.fullName, reportStore, setFeedback, setPayrollClosures, t]);
 
   const exportPayrollCsv = useCallback(() => {
     const headers = [
