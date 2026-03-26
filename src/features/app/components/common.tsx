@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 import { CarFront } from "lucide-react";
-import { Button } from "../../../components/ui/button";
 import { Label } from "../../../components/ui/label";
 
 export const BRAND_LOGO_OPTIONS = [
@@ -104,39 +103,39 @@ export function HomeCard({
   icon,
   title,
   description,
-  buttonLabel,
   onClick,
   disabled = false,
+  className = "",
 }: {
   icon: ReactNode;
   title: string;
   description: string;
-  buttonLabel: string;
   onClick: () => void;
   disabled?: boolean;
+  className?: string;
 }) {
   return (
-    <article className="group relative overflow-hidden rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.03))] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.28)]">
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`group relative block min-h-[260px] overflow-hidden rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.03))] p-5 text-left shadow-[0_24px_80px_rgba(0,0,0,0.28)] transition hover:border-white/15 hover:bg-[linear-gradient(180deg,rgba(255,255,255,0.1),rgba(255,255,255,0.04))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-200/50 disabled:cursor-not-allowed disabled:opacity-55 ${className}`}
+    >
       <div className="pointer-events-none absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-white/40 to-transparent opacity-70" />
-      <div className="mb-5 inline-flex h-14 w-14 items-center justify-center rounded-[20px] border border-amber-200/10 bg-amber-300/14 text-amber-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+      <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-[18px] border border-amber-200/10 bg-amber-300/14 text-amber-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
         {icon}
       </div>
-      <h2 className="text-[30px] font-semibold tracking-tight text-white">{title}</h2>
+      <h2 className="text-[24px] font-semibold tracking-tight text-white">{title}</h2>
       <p className="mt-3 max-w-sm text-sm leading-6 text-stone-300">{description}</p>
-      <div className="mt-8 flex items-center justify-between border-t border-white/10 pt-5">
+      <div className="mt-6 flex items-center justify-between border-t border-white/10 pt-4">
         <span className="text-xs uppercase tracking-[0.24em] text-stone-500">
           {disabled ? "Restricted" : "Ready"}
         </span>
-        <Button
-          type="button"
-          onClick={onClick}
-          disabled={disabled}
-          className="rounded-full bg-stone-100 px-5 text-stone-950 shadow-[0_10px_25px_rgba(0,0,0,0.25)] hover:bg-white"
-        >
-          {buttonLabel}
-        </Button>
+        <span className="text-sm font-medium text-stone-200 transition group-hover:text-white">
+          {disabled ? "Locked" : "Enter"}
+        </span>
       </div>
-    </article>
+    </button>
   );
 }
 

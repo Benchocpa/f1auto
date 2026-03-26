@@ -14,7 +14,6 @@ import {
 } from "lucide-react";
 import {
   DEFAULT_LOCATION_NAME,
-  createAccountPasswordForm,
   createAttendanceForm,
   createDeviceStoreSettings,
   createLoginForm,
@@ -42,7 +41,6 @@ import { TimeView } from "./features/app/components/TimeView";
 import { VehicleView } from "./features/app/components/VehicleView";
 import type {
   AdminStoreStat,
-  AccountPasswordFormState,
   AppView,
   AttendanceEntry,
   AttendanceFormState,
@@ -134,10 +132,6 @@ function App() {
   const [passwordResetForm, setPasswordResetForm] = useState<PasswordResetFormState>(() =>
     createPasswordResetForm()
   );
-  const [accountPasswordForm, setAccountPasswordForm] = useState<AccountPasswordFormState>(() =>
-    createAccountPasswordForm()
-  );
-  const [isAccountPasswordModalOpen, setIsAccountPasswordModalOpen] = useState(false);
   const [isPasswordRecoveryMode, setIsPasswordRecoveryMode] = useState(false);
   const [isPasswordResetRequestMode, setIsPasswordResetRequestMode] = useState(false);
   const [userForm, setUserForm] = useState<UserFormState>(() => createUserForm());
@@ -567,7 +561,6 @@ function App() {
   );
 
   const {
-    handleAccountPasswordUpdate,
     handleUserBlockToggle,
     handleUserDelete,
     handleLoginSubmit,
@@ -577,17 +570,14 @@ function App() {
     handleUserSubmit,
   } = useAuthActions({
     activeStore,
-    accountPasswordForm,
     currentUser,
     editingUserId,
     loginForm,
     passwordResetForm,
     setActiveStore,
-    setAccountPasswordForm,
     setCurrentUser,
     setCurrentView,
     setFeedback,
-    setIsAccountPasswordModalOpen,
     setIsPasswordRecoveryMode,
     setIsPasswordResetRequestMode,
     setIsUserModalOpen,
@@ -1129,88 +1119,10 @@ function App() {
         </section>
 
         <section className="flex justify-end">
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center justify-end gap-3 rounded-[26px] border border-white/10 bg-white/[0.03] px-3 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
             <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-stone-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
               {currentUser.fullName} · {currentUser.role === "admin" ? t("Administrator", "Administrador") : t("Operator", "Operador")}
             </div>
-            {isSupabaseAuthEnabled ? (
-              <Dialog
-                open={isAccountPasswordModalOpen}
-                onOpenChange={(open) => {
-                  setIsAccountPasswordModalOpen(open);
-                  if (!open) {
-                    setAccountPasswordForm(createAccountPasswordForm());
-                  }
-                }}
-              >
-                <DialogTrigger asChild>
-                  <Button type="button" variant="secondary" className="rounded-full border border-white/10 bg-white/90 text-stone-900 hover:bg-white">
-                    {t("Change password", "Cambiar contrasena")}
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-md rounded-3xl border-white/10 bg-stone-950 p-6 text-stone-100">
-                  <DialogHeader>
-                    <DialogTitle className="text-white">
-                      {t("Update your password", "Actualiza tu contrasena")}
-                    </DialogTitle>
-                    <DialogDescription className="text-stone-400">
-                      {t(
-                        "This change applies to your current account only.",
-                        "Este cambio aplica solo a tu cuenta actual."
-                      )}
-                    </DialogDescription>
-                  </DialogHeader>
-
-                  <form className="grid gap-4" onSubmit={handleAccountPasswordUpdate}>
-                    <Field label={t("New password", "Nueva contrasena")}>
-                      <Input
-                        type="password"
-                        value={accountPasswordForm.password}
-                        onChange={(event) =>
-                          setAccountPasswordForm((current) => ({
-                            ...current,
-                            password: event.target.value,
-                          }))
-                        }
-                        autoComplete="new-password"
-                        placeholder={t("Minimum 8 characters", "Minimo 8 caracteres")}
-                        required
-                      />
-                    </Field>
-
-                    <Field label={t("Confirm password", "Confirmar contrasena")}>
-                      <Input
-                        type="password"
-                        value={accountPasswordForm.confirmPassword}
-                        onChange={(event) =>
-                          setAccountPasswordForm((current) => ({
-                            ...current,
-                            confirmPassword: event.target.value,
-                          }))
-                        }
-                        autoComplete="new-password"
-                        placeholder={t("Repeat the new password", "Repite la nueva contrasena")}
-                        required
-                      />
-                    </Field>
-
-                    <div className="flex justify-end gap-3">
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        onClick={() => {
-                          setIsAccountPasswordModalOpen(false);
-                          setAccountPasswordForm(createAccountPasswordForm());
-                        }}
-                      >
-                        {t("Cancel", "Cancelar")}
-                      </Button>
-                      <Button type="submit">{t("Save password", "Guardar contrasena")}</Button>
-                    </div>
-                  </form>
-                </DialogContent>
-              </Dialog>
-            ) : null}
             <Button type="button" variant="secondary" className="rounded-full border border-white/10 bg-white/90 text-stone-900 hover:bg-white" onClick={handleLogout}>
               <LogOut className="mr-2 h-4 w-4" />
               {t("Sign out", "Cerrar sesion")}
@@ -1239,70 +1151,54 @@ function App() {
         </section>
 
         {currentView === "home" ? (
-          <section className="grid gap-5 lg:grid-cols-3">
-            <HomeCard
-              icon={<CarFront className="h-6 w-6" />}
-              title={t("Vehicle intake", "Ingreso de vehiculos")}
-              description={t(
-                "Intake form, status tracking, and brand filters.",
-                "Formulario de captura, estado operativo y filtros por marca."
-              )}
-              buttonLabel={t("Open vehicles", "Abrir vehiculos")}
-              onClick={() => setCurrentView("vehicles")}
-            />
-            <HomeCard
-              icon={<Clock3 className="h-6 w-6" />}
-              title={t("Time control", "Control de tiempo")}
-              description={t(
-                "Clock-in, clock-out, and employee registration by code.",
-                "Entrada, salida y registro de empleados por codigo."
-              )}
-              buttonLabel={t("Open time control", "Abrir tiempo")}
-              onClick={() => setCurrentView("time")}
-            />
-            <HomeCard
-              icon={<Shield className="h-6 w-6" />}
-              title={t("Administrator", "Administrador")}
-              description={t(
-                "Global view with access to all locations and operating summary.",
-                "Vista global con acceso a todas las ubicaciones y resumen operativo."
-              )}
-              buttonLabel={t("Open admin", "Abrir administrador")}
-              onClick={() => setCurrentView("admin")}
-              disabled={currentUser.role !== "admin"}
-            />
-            {currentUser.role === "admin" ? (
-              <article className="overflow-hidden rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.03))] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.28)] lg:col-span-3">
-                <div className="flex flex-col gap-4 border-b border-white/10 pb-5 lg:flex-row lg:items-end lg:justify-between">
-                  <div className="max-w-2xl">
-                    <p className="text-xs uppercase tracking-[0.24em] text-stone-500">
-                      {t("User management", "Gestion de usuarios")}
-                    </p>
-                    <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white">
-                      {t("Register system users", "Registrar usuarios del sistema")}
-                    </h2>
-                    <p className="mt-3 max-w-2xl text-sm leading-6 text-stone-300">
-                      {t(
+          <section className={currentUser.role === "admin" ? "grid gap-5 xl:grid-cols-[1.05fr_0.95fr]" : ""}>
+            <div className={`grid gap-4 ${currentUser.role === "admin" ? "sm:grid-cols-2" : "md:grid-cols-2 xl:grid-cols-3"}`}>
+              <HomeCard
+                icon={<CarFront className="h-6 w-6" />}
+                title={t("Vehicle intake", "Ingreso de vehiculos")}
+                description={t(
+                  "Intake form, status tracking, and brand filters.",
+                  "Formulario de captura, estado operativo y filtros por marca."
+                )}
+                onClick={() => setCurrentView("vehicles")}
+              />
+              <HomeCard
+                icon={<Clock3 className="h-6 w-6" />}
+                title={t("Time control", "Control de tiempo")}
+                description={t(
+                  "Clock-in, clock-out, and employee registration by code.",
+                  "Entrada, salida y registro de empleados por codigo."
+                )}
+                onClick={() => setCurrentView("time")}
+              />
+              <HomeCard
+                icon={<Shield className="h-6 w-6" />}
+                title={t("Administrator", "Administrador")}
+                description={t(
+                  "Global view with access to all locations and operating summary.",
+                  "Vista global con acceso a todas las ubicaciones y resumen operativo."
+                )}
+                onClick={() => setCurrentView("admin")}
+                disabled={currentUser.role !== "admin"}
+              />
+              {currentUser.role === "admin" ? (
+                <Dialog open={isUserModalOpen} onOpenChange={setIsUserModalOpen}>
+                  <DialogTrigger asChild>
+                    <HomeCard
+                      icon={<Users className="h-6 w-6" />}
+                      title={t("Register system users", "Registrar usuarios del sistema")}
+                      description={t(
                         "Create administrator or user accounts and define the clock-in code.",
                         "Crea cuentas de administrador o usuario y define el codigo de clock-in."
                       )}
-                    </p>
-                  </div>
-
-                  <Dialog open={isUserModalOpen} onOpenChange={setIsUserModalOpen}>
-                    <DialogTrigger asChild>
-                      <Button
-                        type="button"
-                        className="rounded-full bg-stone-100 px-5 text-stone-950 hover:bg-white"
-                        onClick={() => {
-                          setEditingUserId(null);
-                          setUserForm(createUserForm(activeStore));
-                        }}
-                      >
-                        {t("Register user", "Registrar usuario")}
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="max-w-3xl rounded-3xl border-white/10 bg-stone-950 p-6 text-stone-100">
+                      onClick={() => {
+                        setEditingUserId(null);
+                        setUserForm(createUserForm(activeStore));
+                        setIsUserModalOpen(true);
+                      }}
+                    />
+                  </DialogTrigger>
+                  <DialogContent className="max-w-3xl rounded-3xl border-white/10 bg-stone-950 p-6 text-stone-100">
                       <DialogHeader>
                         <DialogTitle className="text-white">
                           {editingUserId
@@ -1445,8 +1341,25 @@ function App() {
                           </Button>
                         </div>
                       </form>
-                    </DialogContent>
-                  </Dialog>
+                  </DialogContent>
+                </Dialog>
+              ) : null}
+            </div>
+
+            {currentUser.role === "admin" ? (
+              <article className="overflow-hidden rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.03))] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.28)]">
+                <div className="flex items-center justify-between border-b border-white/10 pb-4">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.24em] text-stone-500">
+                      {t("User management", "Gestion de usuarios")}
+                    </p>
+                    <h2 className="mt-2 text-2xl font-semibold tracking-tight text-white">
+                      {t("System users", "Usuarios del sistema")}
+                    </h2>
+                  </div>
+                  <Badge variant="secondary" className="border-white/10 bg-white/10 text-stone-100">
+                    {users.length} {t("users", "usuarios")}
+                  </Badge>
                 </div>
 
                 <div className="mt-6 grid gap-3">

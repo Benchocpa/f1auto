@@ -1,7 +1,6 @@
 import { useCallback } from "react";
 import type { Dispatch, FormEvent, SetStateAction } from "react";
 import {
-  createAccountPasswordForm,
   createAttendanceForm,
   createLoginForm,
   createPasswordResetForm,
@@ -13,7 +12,6 @@ import { isSupabaseAuthEnabled, supabase } from "../data/supabaseClient";
 import { generateDailyBillingPdf } from "../dailyBillingPdf";
 import type {
   AttendanceEntry,
-  AccountPasswordFormState,
   AttendanceFormState,
   AppView,
   EmployeeEntry,
@@ -35,17 +33,14 @@ import { formatCurrency, getCurrentTime, getTodayDate, normalizeEmployeeCode } f
 
 interface UseAuthActionsParams {
   activeStore: StoreName;
-  accountPasswordForm: AccountPasswordFormState;
   currentUser: UserEntry | null;
   editingUserId: string | null;
   loginForm: LoginFormState;
   passwordResetForm: PasswordResetFormState;
   setActiveStore: Dispatch<SetStateAction<StoreName>>;
-  setAccountPasswordForm: Dispatch<SetStateAction<AccountPasswordFormState>>;
   setCurrentUser: Dispatch<SetStateAction<UserEntry | null>>;
   setCurrentView: Dispatch<SetStateAction<AppView>>;
   setFeedback: Dispatch<SetStateAction<string | null>>;
-  setIsAccountPasswordModalOpen: Dispatch<SetStateAction<boolean>>;
   setIsPasswordRecoveryMode: Dispatch<SetStateAction<boolean>>;
   setIsPasswordResetRequestMode: Dispatch<SetStateAction<boolean>>;
   setIsUserModalOpen: Dispatch<SetStateAction<boolean>>;
@@ -62,17 +57,14 @@ interface UseAuthActionsParams {
 
 export function useAuthActions({
   activeStore,
-  accountPasswordForm,
   currentUser,
   editingUserId,
   loginForm,
   passwordResetForm,
   setActiveStore,
-  setAccountPasswordForm,
   setCurrentUser,
   setCurrentView,
   setFeedback,
-  setIsAccountPasswordModalOpen,
   setIsPasswordRecoveryMode,
   setIsPasswordResetRequestMode,
   setIsUserModalOpen,
@@ -356,70 +348,6 @@ export function useAuthActions({
       setIsPasswordResetRequestMode,
       setLoginForm,
       setPasswordResetForm,
-      t,
-    ]
-  );
-
-  const handleAccountPasswordUpdate = useCallback(
-    async (event: FormEvent<HTMLFormElement>) => {
-      event.preventDefault();
-
-      if (!isSupabaseAuthEnabled || !supabase) {
-        setFeedback(
-          t(
-            "Password changes from the app require Supabase auth.",
-            "El cambio de contrasena desde la app requiere Supabase auth."
-          )
-        );
-        return;
-      }
-
-      if (!accountPasswordForm.password || !accountPasswordForm.confirmPassword) {
-        setFeedback(
-          t("Enter and confirm the new password.", "Ingresa y confirma la nueva contrasena.")
-        );
-        return;
-      }
-
-      if (accountPasswordForm.password.length < 8) {
-        setFeedback(
-          t(
-            "The new password must be at least 8 characters.",
-            "La nueva contrasena debe tener al menos 8 caracteres."
-          )
-        );
-        return;
-      }
-
-      if (accountPasswordForm.password !== accountPasswordForm.confirmPassword) {
-        setFeedback(t("The passwords do not match.", "Las contrasenas no coinciden."));
-        return;
-      }
-
-      const { error } = await supabase.auth.updateUser({
-        password: accountPasswordForm.password,
-      });
-
-      if (error) {
-        setFeedback(t(error.message, error.message));
-        return;
-      }
-
-      setIsAccountPasswordModalOpen(false);
-      setAccountPasswordForm(createAccountPasswordForm());
-      setFeedback(
-        t(
-          "Password updated successfully.",
-          "Contrasena actualizada correctamente."
-        )
-      );
-    },
-    [
-      accountPasswordForm.confirmPassword,
-      accountPasswordForm.password,
-      setAccountPasswordForm,
-      setFeedback,
-      setIsAccountPasswordModalOpen,
       t,
     ]
   );
@@ -708,7 +636,6 @@ export function useAuthActions({
   return {
     handleUserBlockToggle,
     handleUserDelete,
-    handleAccountPasswordUpdate,
     handleLoginSubmit,
     handleLogout,
     handlePasswordResetRequest,
@@ -1177,22 +1104,6 @@ export function useAdminActions({
   const reportStoreRecord =
     stores.find((entry) => entry.name.trim().toLowerCase() === reportStore.trim().toLowerCase()) ?? null;
 
-  const getAdminToken = useCallback(async () => {
-    if (!isSupabaseAuthEnabled || !supabase) {
-      throw new Error("This action requires Supabase auth.");
-    }
-
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-
-    if (!session?.access_token) {
-      throw new Error("You must be signed in as an administrator.");
-    }
-
-    return session.access_token;
-  }, []);
-
   const buildDailyBillingPdf = useCallback(
     async () =>
       generateDailyBillingPdf({
@@ -1203,69 +1114,36 @@ export function useAdminActions({
     [reportStore, reportStoreRecord?.logoKey, reportVehicles]
   );
 
-  const toBase64 = useCallback((bytes: Uint8Array) => {
-    let binary = "";
-    const chunkSize = 0x8000;
-
-    for (let index = 0; index < bytes.length; index += chunkSize) {
-      const chunk = bytes.subarray(index, index + chunkSize);
-      binary += String.fromCharCode(...chunk);
-    }
-
-    return btoa(binary);
-  }, []);
-
-  const handleSendReportPreview = useCallback(async () => {
+  const handleSendReportPreview = useCallback(() => {
     const recipient = window.prompt(
       t(
         "Enter the email address for the daily billing statement.",
         "Ingresa el correo para la cuenta de cobro diaria."
       )
     )?.trim();
-
     if (!recipient) return;
 
-    try {
-      const token = await getAdminToken();
-      const pdfBytes = await buildDailyBillingPdf();
-      const pdfBase64 = toBase64(pdfBytes);
-      const filename = `daily-billing-${reportStore.replace(/\s+/g, "-").toLowerCase()}-${new Date().toISOString().slice(0, 10)}.pdf`;
+    const total = reportVehicles.reduce((sum, entry) => sum + entry.price, 0);
+    const body = encodeURIComponent(
+      [
+        `${t("Daily billing statement", "Cuenta de cobro diaria")} · ${reportStore}`,
+        `${t("Vehicles", "Vehiculos")}: ${reportVehicles.length}`,
+        `${t("Total amount", "Monto total")}: ${formatCurrency(total)}`,
+        `${t("Date", "Fecha")}: ${new Date().toLocaleDateString()}`,
+      ].join("\n")
+    );
+    const subject = encodeURIComponent(
+      `${t("Daily billing statement", "Cuenta de cobro diaria")} · ${reportStore}`
+    );
 
-      const response = await fetch("/api/admin/send-daily-billing", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          recipient,
-          filename,
-          store: reportStore,
-          pdfBase64,
-        }),
-      });
-
-      const payload = (await response.json().catch(() => ({}))) as { error?: string };
-
-      if (!response.ok) {
-        throw new Error(payload.error || "Could not send the billing statement.");
-      }
-
-      setFeedback(
-        t(
-          `Billing statement sent to ${recipient}.`,
-          `Cuenta de cobro enviada a ${recipient}.`
-        )
-      );
-    } catch (error) {
-      setFeedback(
-        t(
-          error instanceof Error ? error.message : "Could not send the billing statement.",
-          error instanceof Error ? error.message : "No se pudo enviar la cuenta de cobro."
-        )
-      );
-    }
-  }, [buildDailyBillingPdf, getAdminToken, reportStore, setFeedback, t, toBase64]);
+    window.location.href = `mailto:${recipient}?subject=${subject}&body=${body}`;
+    setFeedback(
+      t(
+        "Email prepared. Attach the PDF manually before sending.",
+        "Correo preparado. Adjunta el PDF manualmente antes de enviarlo."
+      )
+    );
+  }, [reportStore, reportVehicles, setFeedback, t]);
 
   const handleClosePayrollPeriod = useCallback((adminPin: string) => {
     const normalizedAdminPin = normalizeEmployeeCode(adminPin);
