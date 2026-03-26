@@ -137,6 +137,7 @@ function App() {
   const [userForm, setUserForm] = useState<UserFormState>(() => createUserForm());
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
+  const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
   const [deleteUserTarget, setDeleteUserTarget] = useState<UserEntry | null>(null);
   const [deleteUserPin, setDeleteUserPin] = useState("");
   const [blockUserTarget, setBlockUserTarget] = useState<UserEntry | null>(null);
@@ -1366,83 +1367,99 @@ function App() {
                   {users.map((user) => (
                     <div
                       key={user.id}
-                      className="rounded-[24px] border border-white/10 bg-stone-950/55 px-5 py-4 text-sm text-stone-300 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+                      className="overflow-hidden rounded-[24px] border border-white/10 bg-stone-950/55 text-sm text-stone-300 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
                     >
-                      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                        <div className="space-y-2">
-                          <div className="flex flex-wrap items-center gap-2 text-stone-100">
-                            <span className="text-base font-semibold tracking-tight">{user.fullName}</span>
-                            <Badge variant="secondary" className="bg-white/10 text-stone-100 border-white/10">
-                              {user.role === "admin"
-                                ? t("Administrator", "Administrador")
-                                : t("User", "Usuario")}
-                            </Badge>
-                            {user.isBlocked ? (
-                              <Badge variant="destructive" className="border-red-400/20 bg-red-500/15 text-red-100">{t("Blocked", "Bloqueado")}</Badge>
-                            ) : (
-                              <Badge variant="success" className="border-emerald-400/20 bg-emerald-500/15 text-emerald-100">{t("Active", "Activo")}</Badge>
-                            )}
+                      <button
+                        type="button"
+                        className="w-full px-5 py-4 text-left transition hover:bg-white/[0.03]"
+                        onClick={() =>
+                          setExpandedUserId((current) => (current === user.id ? null : user.id))
+                        }
+                      >
+                        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                          <div className="space-y-2">
+                            <div className="flex flex-wrap items-center gap-2 text-stone-100">
+                              <span className="text-base font-semibold tracking-tight">{user.fullName}</span>
+                              <Badge variant="secondary" className="border-white/10 bg-white/10 text-stone-100">
+                                {user.role === "admin"
+                                  ? t("Administrator", "Administrador")
+                                  : t("User", "Usuario")}
+                              </Badge>
+                              {user.isBlocked ? (
+                                <Badge variant="destructive" className="border-red-400/20 bg-red-500/15 text-red-100">{t("Blocked", "Bloqueado")}</Badge>
+                              ) : (
+                                <Badge variant="success" className="border-emerald-400/20 bg-emerald-500/15 text-emerald-100">{t("Active", "Activo")}</Badge>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap gap-x-3 gap-y-1 text-sm text-stone-400">
+                              <span>{user.jobTitle}</span>
+                              <span>{user.email}</span>
+                              <span>{user.employeeCode}</span>
+                            </div>
                           </div>
-                          <div className="flex flex-wrap gap-x-3 gap-y-1 text-sm text-stone-400">
-                            <span>{user.jobTitle}</span>
-                            <span>{user.email}</span>
-                            <span>{user.employeeCode}</span>
-                          </div>
-                        </div>
 
-                        <div className="flex flex-wrap gap-2">
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            size="sm"
-                            className="rounded-full border border-white/10 bg-white/90 text-stone-900 hover:bg-white"
-                            onClick={() => {
-                              setEditingUserId(user.id);
-                              setUserForm({
-                                fullName: user.fullName,
-                                email: user.email,
-                                password: "",
-                                employeeCode: user.employeeCode,
-                                store: user.store,
-                                jobTitle: user.jobTitle,
-                                role: user.role,
-                              });
-                              setIsUserModalOpen(true);
-                            }}
-                          >
-                            <Pencil className="mr-2 h-4 w-4" />
-                            {t("Edit user", "Editar usuario")}
-                          </Button>
-                          <Button
-                            type="button"
-                            variant={user.isBlocked ? "secondary" : "outline"}
-                            size="sm"
-                            className={user.isBlocked ? "rounded-full border border-white/10 bg-white/90 text-stone-900 hover:bg-white" : "rounded-full border-white/15 bg-white/5 text-stone-100 hover:bg-white/10"}
-                            disabled={currentUser.id === user.id}
-                            onClick={() => {
-                              setBlockUserTarget(user);
-                              setBlockUserPin("");
-                            }}
-                          >
-                            <Lock className="mr-2 h-4 w-4" />
-                            {user.isBlocked ? t("Unblock user", "Desbloquear usuario") : t("Block user", "Bloquear usuario")}
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="destructive"
-                            size="sm"
-                            className="rounded-full border border-red-400/20 bg-red-500/85 text-white hover:bg-red-500"
-                            disabled={currentUser.id === user.id}
-                            onClick={() => {
-                              setDeleteUserTarget(user);
-                              setDeleteUserPin("");
-                            }}
-                          >
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            {t("Delete user", "Eliminar usuario")}
-                          </Button>
+                          <div className="text-xs uppercase tracking-[0.24em] text-stone-500">
+                            {expandedUserId === user.id ? t("Hide actions", "Ocultar acciones") : t("View actions", "Ver acciones")}
+                          </div>
                         </div>
-                      </div>
+                      </button>
+
+                      {expandedUserId === user.id ? (
+                        <div className="border-t border-white/10 px-5 py-4">
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              className="rounded-full border border-white/10 bg-white/90 text-stone-900 hover:bg-white"
+                              onClick={() => {
+                                setEditingUserId(user.id);
+                                setUserForm({
+                                  fullName: user.fullName,
+                                  email: user.email,
+                                  password: "",
+                                  employeeCode: user.employeeCode,
+                                  store: user.store,
+                                  jobTitle: user.jobTitle,
+                                  role: user.role,
+                                });
+                                setIsUserModalOpen(true);
+                              }}
+                            >
+                              <Pencil className="mr-2 h-4 w-4" />
+                              {t("Edit user", "Editar usuario")}
+                            </Button>
+                            <Button
+                              type="button"
+                              variant={user.isBlocked ? "secondary" : "outline"}
+                              size="sm"
+                              className={user.isBlocked ? "rounded-full border border-white/10 bg-white/90 text-stone-900 hover:bg-white" : "rounded-full border-white/15 bg-white/5 text-stone-100 hover:bg-white/10"}
+                              disabled={currentUser.id === user.id}
+                              onClick={() => {
+                                setBlockUserTarget(user);
+                                setBlockUserPin("");
+                              }}
+                            >
+                              <Lock className="mr-2 h-4 w-4" />
+                              {user.isBlocked ? t("Unblock user", "Desbloquear usuario") : t("Block user", "Bloquear usuario")}
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="destructive"
+                              size="sm"
+                              className="rounded-full border border-red-400/20 bg-red-500/85 text-white hover:bg-red-500"
+                              disabled={currentUser.id === user.id}
+                              onClick={() => {
+                                setDeleteUserTarget(user);
+                                setDeleteUserPin("");
+                              }}
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              {t("Delete user", "Eliminar usuario")}
+                            </Button>
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                   ))}
                 </div>
