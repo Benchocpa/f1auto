@@ -3,9 +3,12 @@ import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { Input } from "../../../components/ui/input";
 import type { LoginFormState, PasswordResetFormState, Translate, UserEntry } from "../types";
-import { StatCard, Field } from "./common";
+import { LocationBrand, StatCard, Field } from "./common";
 
 interface LoginScreenProps {
+  configuredLocationLabel: string;
+  configuredLocationLogoKey: string;
+  configuredLocationSubtitle: string;
   feedback: string | null;
   isPasswordRecoveryMode: boolean;
   isPasswordResetRequestMode: boolean;
@@ -27,6 +30,9 @@ interface LoginScreenProps {
 }
 
 export function LoginScreen({
+  configuredLocationLabel,
+  configuredLocationLogoKey,
+  configuredLocationSubtitle,
   feedback,
   isPasswordRecoveryMode,
   isPasswordResetRequestMode,
@@ -52,6 +58,11 @@ export function LoginScreen({
         <div className="grid w-full gap-6 lg:grid-cols-[1.1fr_0.9fr]">
           <section className="hero-panel">
             <div className="space-y-5">
+              <LocationBrand
+                title={configuredLocationLabel}
+                subtitle={configuredLocationSubtitle}
+                logoKey={configuredLocationLogoKey}
+              />
               <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs uppercase tracking-[0.24em] text-stone-200">
                 <Shield className="h-4 w-4" />
                 {t("Secure access", "Acceso seguro")}

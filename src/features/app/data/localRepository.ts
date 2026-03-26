@@ -1,9 +1,10 @@
 import {
   ATTENDANCE_STORAGE_KEY,
   DEFAULT_ADMIN_USER,
+  DEFAULT_LOCATION_NAME,
   EMPLOYEES_STORAGE_KEY,
   PAYROLL_CLOSURES_STORAGE_KEY,
-  STORES,
+  STORES_STORAGE_KEY,
   USERS_STORAGE_KEY,
   VEHICLE_STORAGE_KEY,
 } from "../config";
@@ -11,6 +12,7 @@ import type {
   AttendanceEntry,
   EmployeeEntry,
   PayrollClosureEntry,
+  StoreEntry,
   UserEntry,
   VehicleEntry,
   VehicleHistoryAction,
@@ -70,6 +72,20 @@ async function saveVehicles(vehicles: VehicleEntry[]) {
   writeJson(VEHICLE_STORAGE_KEY, vehicles);
 }
 
+async function upsertVehicle(vehicle: VehicleEntry) {
+  const current = loadVehicles();
+  const next = [vehicle, ...current.filter((entry) => entry.id !== vehicle.id)];
+  writeJson(VEHICLE_STORAGE_KEY, next);
+}
+
+async function deleteVehicle(id: string) {
+  const current = loadVehicles();
+  writeJson(
+    VEHICLE_STORAGE_KEY,
+    current.filter((entry) => entry.id !== id)
+  );
+}
+
 function clearVehicles() {
   localStorage.removeItem(VEHICLE_STORAGE_KEY);
 }
@@ -122,6 +138,16 @@ async function savePayrollClosures(payrollClosures: PayrollClosureEntry[]) {
   writeJson(PAYROLL_CLOSURES_STORAGE_KEY, payrollClosures);
 }
 
+function loadStores(): StoreEntry[] {
+  const parsedStores = readJson<StoreEntry[]>(STORES_STORAGE_KEY);
+  if (!parsedStores) return [];
+  return parsedStores;
+}
+
+async function saveStores(stores: StoreEntry[]) {
+  writeJson(STORES_STORAGE_KEY, stores);
+}
+
 function loadUsers(): UserEntry[] {
   const parsedUsers = readJson<Array<UserEntry & { username?: string }>>(USERS_STORAGE_KEY);
   if (!parsedUsers) return [DEFAULT_ADMIN_USER];
@@ -131,7 +157,7 @@ function loadUsers(): UserEntry[] {
     authUserId: entry.authUserId ?? null,
     email: entry.email ?? entry.username ?? "",
     employeeCode: normalizeEmployeeCode(entry.employeeCode),
-    store: entry.store ?? STORES[0],
+    store: entry.store ?? DEFAULT_LOCATION_NAME,
     jobTitle: entry.jobTitle ?? (entry.role === "admin" ? "Administrator" : "Operator"),
     isBlocked: entry.isBlocked ?? false,
     blockedAt: entry.blockedAt ?? null,
@@ -152,6 +178,7 @@ async function load(): Promise<AppDataSnapshot> {
     attendance: loadAttendance(),
     employees: loadEmployees(),
     payrollClosures: loadPayrollClosures(),
+    stores: loadStores(),
     users: loadUsers(),
     vehicles: loadVehicles(),
   };
@@ -165,10 +192,13 @@ async function clearOperationalData() {
 
 export const localRepository: AppRepository = {
   clearOperationalData,
+  deleteVehicle,
   load,
   saveAttendance,
   saveEmployees,
   savePayrollClosures,
+  saveStores,
   saveUsers,
   saveVehicles,
+  upsertVehicle,
 };

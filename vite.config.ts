@@ -4,6 +4,7 @@ import createUserHandler from "./api/admin/create-user";
 import updateUserHandler from "./api/admin/update-user";
 import deleteUserHandler from "./api/admin/delete-user";
 import toggleUserBlockHandler from "./api/admin/toggle-user-block";
+import sendDailyBillingHandler from "./api/admin/send-daily-billing";
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
@@ -13,6 +14,8 @@ export default defineConfig(({ mode }) => {
     env.SUPABASE_ANON_KEY || env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
   process.env.SUPABASE_SERVICE_ROLE_KEY =
     env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+  process.env.RESEND_API_KEY = env.RESEND_API_KEY || process.env.RESEND_API_KEY;
+  process.env.BILLING_FROM_EMAIL = env.BILLING_FROM_EMAIL || process.env.BILLING_FROM_EMAIL;
 
   return {
     plugins: [
@@ -25,6 +28,7 @@ export default defineConfig(({ mode }) => {
             ["/api/admin/update-user", updateUserHandler],
             ["/api/admin/delete-user", deleteUserHandler],
             ["/api/admin/toggle-user-block", toggleUserBlockHandler],
+            ["/api/admin/send-daily-billing", sendDailyBillingHandler],
           ] as const;
 
           routes.forEach(([path, handler]) => {

@@ -66,7 +66,7 @@ export function ClockOutDialog({
                     key={index}
                     className="flex h-14 items-center justify-center rounded-2xl border border-white/10 bg-stone-900 text-2xl font-semibold text-white shadow-sm sm:h-16 sm:text-3xl"
                   >
-                    {codeDigits[index] ?? ""}
+                    {codeDigits[index] ? "•" : ""}
                   </div>
                 ))}
               </div>

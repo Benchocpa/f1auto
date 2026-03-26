@@ -13,18 +13,21 @@ import {
   Users,
 } from "lucide-react";
 import {
-  STORES,
+  DEFAULT_LOCATION_NAME,
   createAccountPasswordForm,
   createAttendanceForm,
+  createDeviceStoreSettings,
   createLoginForm,
   createPasswordResetForm,
+  createStoreForm,
   createUserForm,
   createVehicleFilters,
   createVehicleForm,
+  DEVICE_STORE_SETTINGS_KEY,
 } from "./features/app/config";
 import { AdminView } from "./features/app/components/AdminView";
 import { ClockOutDialog } from "./features/app/components/ClockOutDialog";
-import { HomeCard, Field, StatCard } from "./features/app/components/common";
+import { HomeCard, Field, LocationBrand, StatCard } from "./features/app/components/common";
 import {
   useAdminActions,
   useAttendanceActions,
@@ -43,12 +46,15 @@ import type {
   AppView,
   AttendanceEntry,
   AttendanceFormState,
+  DeviceStoreSettings,
   EmployeeEntry,
   Language,
   LoginFormState,
   PayrollClosureEntry,
   PayrollEmployeeSummary,
   PasswordResetFormState,
+  StoreFormState,
+  StoreEntry,
   StoreName,
   Translate,
   UserEntry,
@@ -63,6 +69,7 @@ import {
   buildPayrollSummary,
   formatCurrency,
   formatDateWithWeekday,
+  getUniqueLocations,
   getTodayDate,
   normalizeEmployeeCode,
 } from "./features/app/utils";
@@ -79,22 +86,49 @@ import {
 } from "./components/ui/dialog";
 import { Select } from "./components/ui/select";
 function App() {
+  const initialDeviceStoreSettings = useMemo<DeviceStoreSettings>(() => {
+    if (typeof window === "undefined") {
+      return createDeviceStoreSettings();
+    }
+
+    try {
+      const raw = window.localStorage.getItem(DEVICE_STORE_SETTINGS_KEY);
+      if (!raw) return createDeviceStoreSettings();
+      const parsed = JSON.parse(raw) as Partial<DeviceStoreSettings>;
+      return {
+        ...createDeviceStoreSettings(),
+        ...parsed,
+        store: String(parsed.store || DEFAULT_LOCATION_NAME),
+      };
+    } catch {
+      return createDeviceStoreSettings();
+    }
+  }, []);
+
   const appRepository = useMemo(() => getAppRepository(), []);
   const [language, setLanguage] = useState<Language>("en");
   const [currentView, setCurrentView] = useState<AppView>("home");
   const [isPublicTimeControlMode, setIsPublicTimeControlMode] = useState(false);
-  const [activeStore, setActiveStore] = useState<StoreName>(STORES[0]);
-  const [reportStore, setReportStore] = useState<StoreName>(STORES[0]);
+  const [activeStore, setActiveStore] = useState<StoreName>(initialDeviceStoreSettings.store || DEFAULT_LOCATION_NAME);
+  const [reportStore, setReportStore] = useState<StoreName>(initialDeviceStoreSettings.store || DEFAULT_LOCATION_NAME);
+  const [storeSettings, setStoreSettings] = useState<DeviceStoreSettings>(initialDeviceStoreSettings);
+  const [storeSettingsForm, setStoreSettingsForm] = useState<DeviceStoreSettings>(initialDeviceStoreSettings);
+  const [isStoreSettingsOpen, setIsStoreSettingsOpen] = useState(false);
+  const [storeForm, setStoreForm] = useState<StoreFormState>(() => createStoreForm());
+  const [editingStoreId, setEditingStoreId] = useState<string | null>(null);
+  const [isStoreModalOpen, setIsStoreModalOpen] = useState(false);
+  const [deleteStoreTarget, setDeleteStoreTarget] = useState<StoreEntry | null>(null);
+  const [deleteStoreFeedback, setDeleteStoreFeedback] = useState<string | null>(null);
   const [makeFilter, setMakeFilter] = useState("Todas");
   const [vehicleFilters, setVehicleFilters] = useState<VehicleFiltersState>(() =>
     createVehicleFilters()
   );
   const [areVehicleFiltersVisible, setAreVehicleFiltersVisible] = useState(false);
   const [vehicleForm, setVehicleForm] = useState<VehicleFormState>(() =>
-    createVehicleForm(STORES[0])
+    createVehicleForm(initialDeviceStoreSettings.store || DEFAULT_LOCATION_NAME)
   );
   const [attendanceForm, setAttendanceForm] = useState<AttendanceFormState>(() =>
-    createAttendanceForm(STORES[0])
+    createAttendanceForm(initialDeviceStoreSettings.store || DEFAULT_LOCATION_NAME)
   );
   const [loginForm, setLoginForm] = useState<LoginFormState>(() => createLoginForm());
   const [passwordResetForm, setPasswordResetForm] = useState<PasswordResetFormState>(() =>
@@ -119,6 +153,7 @@ function App() {
   const [attendance, setAttendance] = useState<AttendanceEntry[]>([]);
   const [employees, setEmployees] = useState<EmployeeEntry[]>([]);
   const [payrollClosures, setPayrollClosures] = useState<PayrollClosureEntry[]>([]);
+  const [stores, setStores] = useState<StoreEntry[]>([]);
   const [users, setUsers] = useState<UserEntry[]>([]);
   const [currentUser, setCurrentUser] = useState<UserEntry | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -132,8 +167,10 @@ function App() {
     setAttendance,
     setEmployees,
     setPayrollClosures,
+    setStores,
     setUsers,
     setVehicles,
+    stores,
     users,
     vehicles,
   });
@@ -147,6 +184,11 @@ function App() {
     setAttendanceForm((current) => ({ ...current, store: activeStore }));
     setReportStore(activeStore);
   }, [activeStore, currentUser?.fullName]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(DEVICE_STORE_SETTINGS_KEY, JSON.stringify(storeSettings));
+  }, [storeSettings]);
 
   useEffect(() => {
     if (!feedback) return;
@@ -194,8 +236,9 @@ function App() {
           return;
         }
         setCurrentUser(profile);
-        setActiveStore(profile.store);
-        setReportStore(profile.store);
+        const nextStore = storeSettings.isConfigured ? storeSettings.store : profile.store || DEFAULT_LOCATION_NAME;
+        setActiveStore(nextStore);
+        setReportStore(nextStore);
       }
     };
 
@@ -243,8 +286,9 @@ function App() {
         setIsPasswordRecoveryMode(false);
         setIsPasswordResetRequestMode(false);
         setCurrentUser(profile);
-        setActiveStore(profile.store);
-        setReportStore(profile.store);
+        const nextStore = storeSettings.isConfigured ? storeSettings.store : profile.store || DEFAULT_LOCATION_NAME;
+        setActiveStore(nextStore);
+        setReportStore(nextStore);
       }
     });
 
@@ -252,16 +296,31 @@ function App() {
       mounted = false;
       subscription.unsubscribe();
     };
-  }, [isHydrated, users]);
+  }, [isHydrated, storeSettings.isConfigured, storeSettings.store, users]);
 
   const vehiclesByStore = useMemo(
     () => vehicles.filter((entry) => entry.store === activeStore),
     [vehicles, activeStore]
   );
 
+  const availableLocations = useMemo(
+    () =>
+      getUniqueLocations([
+        activeStore,
+        reportStore,
+        storeSettings.store,
+        ...stores.map((entry) => entry.name),
+        ...vehicles.map((entry) => entry.store),
+        ...attendance.map((entry) => entry.store),
+        ...users.map((entry) => entry.store),
+        ...payrollClosures.map((entry) => entry.store),
+      ]),
+    [activeStore, attendance, payrollClosures, reportStore, storeSettings.store, stores, users, vehicles]
+  );
+
   const scopedVehicleRecords = useMemo(() => {
     if (currentUser?.role !== "admin") {
-      return vehicles.filter((entry) => entry.store === currentUser?.store);
+      return vehicles.filter((entry) => entry.store === activeStore);
     }
 
     if (vehicleFilters.store === "all") return vehicles;
@@ -351,10 +410,7 @@ function App() {
     [attendance, activeStore]
   );
 
-  const usersByStore = useMemo(
-    () => users.filter((entry) => entry.store === activeStore),
-    [users, activeStore]
-  );
+  const usersByStore = useMemo(() => users, [users]);
 
   const selectedEmployee = useMemo(
     () =>
@@ -442,7 +498,7 @@ function App() {
 
   const adminStoreStats = useMemo<AdminStoreStat[]>(
     () =>
-      STORES.map((store) => {
+      availableLocations.map((store) => {
         const storeVehicles = vehicles.filter((entry) => entry.store === store);
         const storeAttendance = attendance.filter((entry) => entry.store === store);
         const storeEmployees = users.filter((entry) => entry.store === store);
@@ -461,7 +517,7 @@ function App() {
           salesToday,
         };
       }),
-    [attendance, users, vehicles]
+    [attendance, availableLocations, users, vehicles]
   );
 
   const reportVehicles = useMemo(
@@ -520,6 +576,7 @@ function App() {
     handlePasswordUpdate,
     handleUserSubmit,
   } = useAuthActions({
+    activeStore,
     accountPasswordForm,
     currentUser,
     editingUserId,
@@ -545,9 +602,10 @@ function App() {
     users,
   });
 
-  const { handleVehicleSubmit, updateVehicleDeliveredTime, updateVehicleStatus } = useVehicleActions({
+  const { deleteVehicleEntry, handleVehicleSubmit, updateVehicleDeliveredTime, updateVehicleEntry, updateVehicleStatus } = useVehicleActions({
     activeStore,
     currentUser,
+    repository: appRepository,
     setFeedback,
     setVehicleForm,
     setVehicles,
@@ -571,8 +629,10 @@ function App() {
   });
 
   const {
+    exportDailyBillingCsv,
     exportPayrollCsv,
     handleClosePayrollPeriod,
+    handlePrintDailyBilling,
     handlePrintPayrollSummary,
     handleSendReportPreview,
     resetDemoData,
@@ -582,6 +642,8 @@ function App() {
     payrollSummaries,
     repository: appRepository,
     reportStore,
+    reportVehicles,
+    stores,
     setAttendance,
     setEmployees,
     setFeedback,
@@ -589,6 +651,143 @@ function App() {
     setVehicles,
     t,
   });
+
+  const configuredStoreLabel = useMemo(
+    () => storeSettings.store,
+    [storeSettings.store]
+  );
+  const configuredStoreRecord = useMemo(
+    () =>
+      stores.find(
+        (entry) => entry.name.trim().toLowerCase() === storeSettings.store.trim().toLowerCase()
+      ) ?? null,
+    [storeSettings.store, stores]
+  );
+  const configuredStoreSubtitle = useMemo(
+    () => [configuredStoreRecord?.address].filter(Boolean).join(" · "),
+    [configuredStoreRecord?.address]
+  );
+
+  const handleStoreSettingsSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const normalizedStoreName = storeSettingsForm.store.trim();
+
+    if (!normalizedStoreName) {
+      setFeedback(t("Location name is required.", "El nombre de la ubicacion es obligatorio."));
+      return;
+    }
+
+    const storeExists = stores.some(
+      (entry) => entry.name.trim().toLowerCase() === normalizedStoreName.toLowerCase()
+    );
+
+    if (!storeExists) {
+      setFeedback(
+        t(
+          "Select an existing store for this computer.",
+          "Selecciona una store existente para esta computadora."
+        )
+      );
+      return;
+    }
+
+    const nextSettings: DeviceStoreSettings = {
+      isConfigured: true,
+      store: normalizedStoreName,
+    };
+
+    setStoreSettings(nextSettings);
+    setActiveStore(nextSettings.store);
+    setReportStore(nextSettings.store);
+    setVehicleForm((current) => ({ ...current, store: nextSettings.store }));
+    setAttendanceForm((current) => ({ ...current, store: nextSettings.store }));
+    setIsStoreSettingsOpen(false);
+    setFeedback(
+      t(
+        "Location configuration saved.",
+        "La configuracion de la ubicacion se guardo."
+      )
+    );
+  };
+
+  const handleStoreSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const normalizedName = storeForm.name.trim();
+    if (!normalizedName) {
+      setFeedback(t("Store name is required.", "El nombre de la store es obligatorio."));
+      return;
+    }
+
+    const duplicate = stores.some(
+      (entry) =>
+        entry.id !== editingStoreId &&
+        entry.name.trim().toLowerCase() === normalizedName.toLowerCase()
+    );
+
+    if (duplicate) {
+      setFeedback(t("That store already exists.", "Esa store ya existe."));
+      return;
+    }
+
+    const existingStore = stores.find((entry) => entry.id === editingStoreId) ?? null;
+    const nextStore: StoreEntry = {
+      id: existingStore?.id ?? crypto.randomUUID(),
+      name: normalizedName,
+      address: storeForm.address.trim(),
+      phone: storeForm.phone.trim(),
+      logoKey: storeForm.logoKey.trim(),
+      createdAt: existingStore?.createdAt ?? new Date().toISOString(),
+    };
+
+    setStores((current) => {
+      const remaining = current.filter((entry) => entry.id !== nextStore.id);
+      return [nextStore, ...remaining].sort((a, b) => a.name.localeCompare(b.name));
+    });
+    setStoreForm(createStoreForm());
+    setEditingStoreId(null);
+    setIsStoreModalOpen(false);
+    setFeedback(
+      t(
+        existingStore ? "Store updated successfully." : "Store created successfully.",
+        existingStore ? "Store actualizada correctamente." : "Store creada correctamente."
+      )
+    );
+  };
+
+  const handleDeleteStore = (adminPin: string) => {
+    if (!deleteStoreTarget) return true;
+
+    if (normalizeEmployeeCode(adminPin) !== normalizeEmployeeCode(currentUser?.employeeCode)) {
+      setDeleteStoreFeedback(t("Invalid administrator PIN.", "PIN de administrador invalido."));
+      return false;
+    }
+
+    const storeName = deleteStoreTarget.name.trim().toLowerCase();
+    const isConfiguredStore = storeSettings.store.trim().toLowerCase() === storeName;
+    const isInUse =
+      users.some((entry) => entry.store.trim().toLowerCase() === storeName) ||
+      vehicles.some((entry) => entry.store.trim().toLowerCase() === storeName) ||
+      attendance.some((entry) => entry.store.trim().toLowerCase() === storeName) ||
+      payrollClosures.some((entry) => entry.store.trim().toLowerCase() === storeName);
+
+    if (isConfiguredStore || isInUse) {
+      setDeleteStoreFeedback(
+        t(
+          "This store cannot be deleted because it is active on this computer or already has operational records.",
+          "No puedes eliminar esta store porque esta activa en esta computadora o ya tiene registros operativos."
+        )
+      );
+      return false;
+    }
+
+    setStores((current) => current.filter((entry) => entry.id !== deleteStoreTarget.id));
+    setDeleteStoreFeedback(null);
+    setDeleteStoreTarget(null);
+    setFeedback(t("Store deleted successfully.", "Store eliminada correctamente."));
+    return true;
+  };
 
   if (!isHydrated) {
     return (
@@ -639,6 +838,11 @@ function App() {
             <section className="hero-panel">
               <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
                 <div className="max-w-3xl space-y-4">
+                  <LocationBrand
+                    title={configuredStoreLabel}
+                    subtitle={configuredStoreSubtitle}
+                    logoKey={configuredStoreRecord?.logoKey ?? ""}
+                  />
                   <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs uppercase tracking-[0.24em] text-stone-200">
                     <Clock3 className="h-4 w-4" />
                     {t("Public time control", "Control de tiempo publico")}
@@ -694,24 +898,34 @@ function App() {
               </div>
             </section>
 
-            <section className="grid gap-3 md:grid-cols-5">
-              {STORES.map((store) => (
-                <button
-                  key={store}
-                  type="button"
-                  onClick={() => {
-                    setActiveStore(store);
-                    setAttendanceForm(createAttendanceForm(store));
-                  }}
-                  className={`store-tile ${activeStore === store ? "store-tile-active" : ""}`}
-                >
-                  <span className="text-xs uppercase tracking-[0.2em] text-stone-400">
-                    {t("Store", "Sucursal")}
-                  </span>
-                  <strong className="text-lg font-semibold text-white">{store}</strong>
-                </button>
-              ))}
-            </section>
+            {storeSettings.isConfigured ? (
+              <section className="rounded-3xl border border-white/10 bg-white/5 px-5 py-4">
+                <p className="text-xs uppercase tracking-[0.18em] text-stone-400">
+                  {t("Configured location", "Ubicacion configurada")}
+                </p>
+                <p className="mt-2 text-xl font-semibold text-white">{configuredStoreLabel}</p>
+                <p className="mt-1 text-sm text-stone-300">{storeSettings.store}</p>
+              </section>
+            ) : (
+              <section className="grid gap-3 md:grid-cols-5">
+                {availableLocations.map((store) => (
+                  <button
+                    key={store}
+                    type="button"
+                    onClick={() => {
+                      setActiveStore(store);
+                      setAttendanceForm(createAttendanceForm(store));
+                    }}
+                    className={`store-tile ${activeStore === store ? "store-tile-active" : ""}`}
+                  >
+                    <span className="text-xs uppercase tracking-[0.2em] text-stone-400">
+                      {t("Location", "Ubicacion")}
+                    </span>
+                    <strong className="text-lg font-semibold text-white">{store}</strong>
+                  </button>
+                ))}
+              </section>
+            )}
 
             {feedback ? (
               <div className="rounded-2xl border border-emerald-400/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
@@ -756,6 +970,9 @@ function App() {
 
     return (
       <LoginScreen
+        configuredLocationLabel={configuredStoreLabel}
+        configuredLocationLogoKey={configuredStoreRecord?.logoKey ?? ""}
+        configuredLocationSubtitle={configuredStoreSubtitle}
         feedback={feedback}
         isPasswordRecoveryMode={isPasswordRecoveryMode}
         isPasswordResetRequestMode={isPasswordResetRequestMode}
@@ -801,15 +1018,22 @@ function App() {
   return (
     <main className="min-h-screen bg-stone-950 text-stone-100">
       <div className="mx-auto flex min-h-screen max-w-7xl flex-col gap-8 px-4 py-6 sm:px-6 lg:px-8">
-        <section className="hero-panel">
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-            <div className="max-w-3xl space-y-4">
-              <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs uppercase tracking-[0.24em] text-stone-200">
+        <section className="relative overflow-hidden rounded-[34px] border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(180,147,78,0.16),transparent_28%),linear-gradient(120deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] px-7 py-7 shadow-[0_30px_100px_rgba(0,0,0,0.32)]">
+          <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-white/35 to-transparent" />
+          <div className="flex flex-col gap-8 xl:flex-row xl:items-end xl:justify-between">
+            <div className="max-w-3xl space-y-5">
+              <LocationBrand
+                title={configuredStoreLabel}
+                subtitle={configuredStoreSubtitle}
+                logoKey={configuredStoreRecord?.logoKey ?? ""}
+                compact
+              />
+              <div className="inline-flex items-center gap-2 rounded-full border border-amber-200/15 bg-amber-300/8 px-3 py-1.5 text-[11px] uppercase tracking-[0.28em] text-stone-200">
                 <Building2 className="h-4 w-4" />
                 {t("F1 Auto Details Control Center", "Centro de control F1 Auto Details")}
               </div>
               <div className="space-y-3">
-                <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">
+                <h1 className="max-w-3xl text-5xl font-semibold tracking-[-0.04em] text-white sm:text-6xl">
                   {currentView === "home"
                     ? t("Main operations panel.", "Panel principal de operaciones.")
                     : currentView === "vehicles"
@@ -818,7 +1042,7 @@ function App() {
                         ? t("Time control and attendance.", "Control de tiempo y asistencia.")
                         : t("Multi-store admin view.", "Vista administrativa multisucursal.")}
                 </h1>
-                <p className="max-w-2xl text-sm leading-6 text-stone-300 sm:text-base">
+                <p className="max-w-2xl text-base leading-7 text-stone-300">
                   {currentView === "home"
                     ? t(
                         "From here you can open vehicle intake, time control, or the admin view with access to every store.",
@@ -835,14 +1059,14 @@ function App() {
                             "Gestiona empleados, entradas, salidas y asistencia diaria desde una vista enfocada."
                           )
                         : t(
-                            "Review all stores at once with operating metrics, active staff, and today sales.",
-                            "Consulta todas las tiendas al mismo tiempo con indicadores operativos, personal activo y ventas del dia."
+                            "Review all locations at once with operating metrics, active staff, and today sales.",
+                            "Consulta todas las ubicaciones al mismo tiempo con indicadores operativos, personal activo y ventas del dia."
                           )}
                 </p>
               </div>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <StatCard
                 icon={<CarFront className="h-5 w-5" />}
                 label={t("Pending vehicles", "Vehiculos pendientes")}
@@ -850,8 +1074,8 @@ function App() {
                 detail={
                   currentView === "admin"
                     ? t(
-                        `${STORES.length} stores monitored`,
-                        `${STORES.length} tiendas monitoreadas`
+                        `${availableLocations.length} locations monitored`,
+                        `${availableLocations.length} ubicaciones monitoreadas`
                       )
                     : t("Vehicles still in progress today", "Vehiculos aun en proceso hoy")
                 }
@@ -862,7 +1086,7 @@ function App() {
                 value={String(currentView === "admin" ? totalCompletedVehicles : completedVehicles)}
                 detail={
                   currentView === "admin"
-                    ? t("Completed across all stores", "Terminados en todas las tiendas")
+                    ? t("Completed across all locations", "Terminados en todas las ubicaciones")
                     : t("Vehicles marked complete", "Vehiculos marcados como completos")
                 }
               />
@@ -896,7 +1120,7 @@ function App() {
                 )}
                 detail={
                   currentView === "admin"
-                    ? t("Combined across all stores", "Consolidado de todas las tiendas")
+                    ? t("Combined across all locations", "Consolidado de todas las ubicaciones")
                     : t("Revenue captured for today", "Facturacion registrada para hoy")
                 }
               />
@@ -906,7 +1130,7 @@ function App() {
 
         <section className="flex justify-end">
           <div className="flex flex-wrap items-center gap-3">
-            <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-stone-300">
+            <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-stone-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
               {currentUser.fullName} · {currentUser.role === "admin" ? t("Administrator", "Administrador") : t("Operator", "Operador")}
             </div>
             {isSupabaseAuthEnabled ? (
@@ -920,7 +1144,7 @@ function App() {
                 }}
               >
                 <DialogTrigger asChild>
-                  <Button type="button" variant="secondary">
+                  <Button type="button" variant="secondary" className="rounded-full border border-white/10 bg-white/90 text-stone-900 hover:bg-white">
                     {t("Change password", "Cambiar contrasena")}
                   </Button>
                 </DialogTrigger>
@@ -987,16 +1211,16 @@ function App() {
                 </DialogContent>
               </Dialog>
             ) : null}
-            <Button type="button" variant="secondary" onClick={handleLogout}>
+            <Button type="button" variant="secondary" className="rounded-full border border-white/10 bg-white/90 text-stone-900 hover:bg-white" onClick={handleLogout}>
               <LogOut className="mr-2 h-4 w-4" />
               {t("Sign out", "Cerrar sesion")}
             </Button>
-            <div className="inline-flex rounded-full border border-white/10 bg-white/5 p-1">
+            <div className="inline-flex rounded-full border border-white/10 bg-white/5 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
               <button
                 type="button"
                 onClick={() => setLanguage("en")}
               className={`rounded-full px-4 py-2 text-sm transition ${
-                language === "en" ? "bg-white text-stone-950" : "text-stone-300"
+                language === "en" ? "bg-white text-stone-950 shadow-sm" : "text-stone-300"
               }`}
             >
               English
@@ -1005,7 +1229,7 @@ function App() {
               type="button"
               onClick={() => setLanguage("es")}
               className={`rounded-full px-4 py-2 text-sm transition ${
-                language === "es" ? "bg-white text-stone-950" : "text-stone-300"
+                language === "es" ? "bg-white text-stone-950 shadow-sm" : "text-stone-300"
               }`}
             >
               Espanol
@@ -1015,7 +1239,7 @@ function App() {
         </section>
 
         {currentView === "home" ? (
-          <section className="grid gap-4 lg:grid-cols-3">
+          <section className="grid gap-5 lg:grid-cols-3">
             <HomeCard
               icon={<CarFront className="h-6 w-6" />}
               title={t("Vehicle intake", "Ingreso de vehiculos")}
@@ -1040,27 +1264,27 @@ function App() {
               icon={<Shield className="h-6 w-6" />}
               title={t("Administrator", "Administrador")}
               description={t(
-                "Global view with access to all stores and operating summary.",
-                "Vista global con acceso a todas las tiendas y resumen operativo."
+                "Global view with access to all locations and operating summary.",
+                "Vista global con acceso a todas las ubicaciones y resumen operativo."
               )}
               buttonLabel={t("Open admin", "Abrir administrador")}
               onClick={() => setCurrentView("admin")}
               disabled={currentUser.role !== "admin"}
             />
             {currentUser.role === "admin" ? (
-              <article className="rounded-3xl border border-white/10 bg-white/5 p-6 lg:col-span-3">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <article className="overflow-hidden rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.03))] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.28)] lg:col-span-3">
+                <div className="flex flex-col gap-4 border-b border-white/10 pb-5 lg:flex-row lg:items-end lg:justify-between">
                   <div className="max-w-2xl">
-                    <p className="text-xs uppercase tracking-[0.18em] text-stone-400">
+                    <p className="text-xs uppercase tracking-[0.24em] text-stone-500">
                       {t("User management", "Gestion de usuarios")}
                     </p>
-                    <h2 className="mt-2 text-2xl font-semibold text-white">
+                    <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white">
                       {t("Register system users", "Registrar usuarios del sistema")}
                     </h2>
-                    <p className="mt-2 text-sm leading-6 text-stone-300">
+                    <p className="mt-3 max-w-2xl text-sm leading-6 text-stone-300">
                       {t(
-                        "Create administrator or user accounts, assign a store, and define the clock-in code.",
-                        "Crea cuentas de administrador o usuario, asigna una tienda y define el codigo de clock-in."
+                        "Create administrator or user accounts and define the clock-in code.",
+                        "Crea cuentas de administrador o usuario y define el codigo de clock-in."
                       )}
                     </p>
                   </div>
@@ -1069,9 +1293,10 @@ function App() {
                     <DialogTrigger asChild>
                       <Button
                         type="button"
+                        className="rounded-full bg-stone-100 px-5 text-stone-950 hover:bg-white"
                         onClick={() => {
                           setEditingUserId(null);
-                          setUserForm(createUserForm());
+                          setUserForm(createUserForm(activeStore));
                         }}
                       >
                         {t("Register user", "Registrar usuario")}
@@ -1087,12 +1312,12 @@ function App() {
                         <DialogDescription className="text-stone-400">
                           {editingUserId
                             ? t(
-                                "Update the selected user's profile, store, access role, clock-in code, and optionally set a new password.",
-                                "Actualiza el perfil, la tienda, el rol, el codigo de clock-in y, si quieres, una nueva contrasena del usuario seleccionado."
+                                "Update the selected user's profile, access role, clock-in code, and optionally set a new password.",
+                                "Actualiza el perfil, el rol, el codigo de clock-in y, si quieres, una nueva contrasena del usuario seleccionado."
                               )
                             : t(
-                                "Create operator or admin accounts and assign store access plus clock-in code.",
-                                "Crea cuentas de operador o administrador y asigna tienda mas codigo de clock-in."
+                                "Create operator or admin accounts with their clock-in code.",
+                                "Crea cuentas de operador o administrador con su codigo de clock-in."
                               )}
                         </DialogDescription>
                       </DialogHeader>
@@ -1189,24 +1414,6 @@ function App() {
                           />
                         </Field>
 
-                        <Field label={t("Store", "Tienda")}>
-                          <Select
-                            value={userForm.store}
-                            onChange={(event) =>
-                              setUserForm((current) => ({
-                                ...current,
-                                store: event.target.value as StoreName,
-                              }))
-                            }
-                          >
-                            {STORES.map((store) => (
-                              <option key={store} value={store}>
-                                {store}
-                              </option>
-                            ))}
-                          </Select>
-                        </Field>
-
                         <Field label={t("Access role", "Rol de acceso")} className="md:col-span-2">
                           <Select
                             value={userForm.role}
@@ -1231,7 +1438,7 @@ function App() {
                             variant="secondary"
                             onClick={() => {
                               setEditingUserId(null);
-                              setUserForm(createUserForm());
+                              setUserForm(createUserForm(activeStore));
                             }}
                           >
                             {t("Clear", "Limpiar")}
@@ -1242,29 +1449,31 @@ function App() {
                   </Dialog>
                 </div>
 
-                <div className="mt-5 space-y-2">
+                <div className="mt-6 grid gap-3">
                   {users.map((user) => (
                     <div
                       key={user.id}
-                      className="rounded-2xl border border-white/10 bg-stone-900/70 px-4 py-3 text-sm text-stone-300"
+                      className="rounded-[24px] border border-white/10 bg-stone-950/55 px-5 py-4 text-sm text-stone-300 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
                     >
-                      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                        <div className="space-y-1">
+                      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                        <div className="space-y-2">
                           <div className="flex flex-wrap items-center gap-2 text-stone-100">
-                            <span className="font-medium">{user.fullName}</span>
-                            <Badge variant="secondary">
+                            <span className="text-base font-semibold tracking-tight">{user.fullName}</span>
+                            <Badge variant="secondary" className="bg-white/10 text-stone-100 border-white/10">
                               {user.role === "admin"
                                 ? t("Administrator", "Administrador")
                                 : t("User", "Usuario")}
                             </Badge>
                             {user.isBlocked ? (
-                              <Badge variant="destructive">{t("Blocked", "Bloqueado")}</Badge>
+                              <Badge variant="destructive" className="border-red-400/20 bg-red-500/15 text-red-100">{t("Blocked", "Bloqueado")}</Badge>
                             ) : (
-                              <Badge variant="secondary">{t("Active", "Activo")}</Badge>
+                              <Badge variant="success" className="border-emerald-400/20 bg-emerald-500/15 text-emerald-100">{t("Active", "Activo")}</Badge>
                             )}
                           </div>
-                          <div>
-                            {user.jobTitle} · {user.store} · {user.email} · {user.employeeCode}
+                          <div className="flex flex-wrap gap-x-3 gap-y-1 text-sm text-stone-400">
+                            <span>{user.jobTitle}</span>
+                            <span>{user.email}</span>
+                            <span>{user.employeeCode}</span>
                           </div>
                         </div>
 
@@ -1273,6 +1482,7 @@ function App() {
                             type="button"
                             variant="secondary"
                             size="sm"
+                            className="rounded-full border border-white/10 bg-white/90 text-stone-900 hover:bg-white"
                             onClick={() => {
                               setEditingUserId(user.id);
                               setUserForm({
@@ -1294,6 +1504,7 @@ function App() {
                             type="button"
                             variant={user.isBlocked ? "secondary" : "outline"}
                             size="sm"
+                            className={user.isBlocked ? "rounded-full border border-white/10 bg-white/90 text-stone-900 hover:bg-white" : "rounded-full border-white/15 bg-white/5 text-stone-100 hover:bg-white/10"}
                             disabled={currentUser.id === user.id}
                             onClick={() => {
                               setBlockUserTarget(user);
@@ -1307,6 +1518,7 @@ function App() {
                             type="button"
                             variant="destructive"
                             size="sm"
+                            className="rounded-full border border-red-400/20 bg-red-500/85 text-white hover:bg-red-500"
                             disabled={currentUser.id === user.id}
                             onClick={() => {
                               setDeleteUserTarget(user);
@@ -1517,7 +1729,7 @@ function App() {
 
             {currentView !== "admin" ? (
               <Badge variant="secondary">
-                {t("Active store", "Tienda activa")}: {activeStore}
+                {t("Active location", "Ubicacion activa")}: {activeStore}
               </Badge>
             ) : (
               <Badge variant="secondary">{t("Global access", "Acceso global")}</Badge>
@@ -1526,29 +1738,30 @@ function App() {
         )}
 
         {currentView !== "home" && currentView !== "admin" ? (
-          currentUser.role === "admin" ? (
-            <section className="grid gap-3 md:grid-cols-5">
-              {STORES.map((store) => (
-                <button
-                  key={store}
-                  type="button"
-                  onClick={() => setActiveStore(store)}
-                  className={`store-tile ${activeStore === store ? "store-tile-active" : ""}`}
-                >
-                  <span className="text-xs uppercase tracking-[0.2em] text-stone-400">
-                    {t("Store", "Sucursal")}
-                  </span>
-                  <strong className="text-lg font-semibold text-white">{store}</strong>
-                </button>
-              ))}
-            </section>
-          ) : (
+          storeSettings.isConfigured ? (
             <section className="rounded-3xl border border-white/10 bg-white/5 px-5 py-4">
               <p className="text-xs uppercase tracking-[0.18em] text-stone-400">
-                {t("Assigned store", "Tienda asignada")}
+                {t("Configured location", "Ubicacion configurada")}
               </p>
-              <p className="mt-2 text-xl font-semibold text-white">{currentUser.store}</p>
+              <p className="mt-2 text-xl font-semibold text-white">{configuredStoreLabel}</p>
+              <p className="mt-1 text-sm text-stone-300">{storeSettings.store}</p>
             </section>
+          ) : (
+          <section className="grid gap-3 md:grid-cols-5">
+            {availableLocations.map((store) => (
+              <button
+                key={store}
+                type="button"
+                onClick={() => setActiveStore(store)}
+                className={`store-tile ${activeStore === store ? "store-tile-active" : ""}`}
+              >
+                <span className="text-xs uppercase tracking-[0.2em] text-stone-400">
+                  {t("Location", "Ubicacion")}
+                </span>
+                <strong className="text-lg font-semibold text-white">{store}</strong>
+              </button>
+            ))}
+          </section>
           )
         ) : null}
 
@@ -1559,11 +1772,12 @@ function App() {
         ) : null}
 
         {currentView === "vehicles" ? (
-          <VehicleView
-            activeStore={activeStore}
-            areVehicleFiltersVisible={areVehicleFiltersVisible}
-            availableMakes={availableMakes}
-            availableSalesPeople={availableSalesPeople}
+        <VehicleView
+          activeStore={activeStore}
+          areVehicleFiltersVisible={areVehicleFiltersVisible}
+          availableMakes={availableMakes}
+          availableLocations={availableLocations}
+          availableSalesPeople={availableSalesPeople}
             currentUser={currentUser}
             filteredVehicles={filteredVehicles}
             language={language}
@@ -1574,12 +1788,15 @@ function App() {
             setVehicleFilters={setVehicleFilters}
             setVehicleForm={setVehicleForm}
             t={t}
-            todaySales={todaySales}
-            updateVehicleDeliveredTime={updateVehicleDeliveredTime}
-            updateVehicleStatus={updateVehicleStatus}
-            vehicleFilters={vehicleFilters}
-            vehicleForm={vehicleForm}
-          />
+          todaySales={todaySales}
+          deleteVehicleEntry={deleteVehicleEntry}
+          updateVehicleDeliveredTime={updateVehicleDeliveredTime}
+          updateVehicleEntry={updateVehicleEntry}
+          updateVehicleStatus={updateVehicleStatus}
+          vehicleFilters={vehicleFilters}
+          vehicleForm={vehicleForm}
+          vehicleRecords={currentUser.role === "admin" ? vehicles : vehiclesByStore}
+        />
         ) : null}
 
         {currentView === "time" ? (
@@ -1598,36 +1815,66 @@ function App() {
         ) : null}
 
         {currentView === "admin" ? (
-          <AdminView
-            adminStoreStats={adminStoreStats}
-            language={language}
-            onJumpToStore={(store) => {
-              setActiveStore(store);
-              setCurrentView("vehicles");
-            }}
-            onResetDemoData={resetDemoData}
-            onClosePayrollPeriod={handleClosePayrollPeriod}
-            onExportPayrollCsv={exportPayrollCsv}
-            onPrintPayrollSummary={handlePrintPayrollSummary}
-            onSendReportPreview={handleSendReportPreview}
-            payrollClosedAtLabel={
-              latestPayrollClosure
-                ? formatDateWithWeekday(latestPayrollClosure.closedAt.slice(0, 10), language)
-                : t("Not closed yet", "Aun no se ha cerrado")
+        <AdminView
+          adminStoreStats={adminStoreStats}
+          availableLocations={availableLocations}
+          configuredLocationLabel={configuredStoreLabel}
+          configuredLocationLogoKey={configuredStoreRecord?.logoKey ?? ""}
+          configuredLocationSubtitle={configuredStoreSubtitle}
+          deleteStoreFeedback={deleteStoreFeedback}
+          deleteStoreTarget={deleteStoreTarget}
+          editingStoreId={editingStoreId}
+          isStoreModalOpen={isStoreModalOpen}
+          isStoreSettingsOpen={isStoreSettingsOpen}
+          language={language}
+          onDeleteStore={handleDeleteStore}
+          onJumpToStore={(store) => {
+            setActiveStore(store);
+            setCurrentView("vehicles");
+          }}
+          onResetDemoData={resetDemoData}
+          onClosePayrollPeriod={handleClosePayrollPeriod}
+          onExportDailyBillingCsv={exportDailyBillingCsv}
+          onExportPayrollCsv={exportPayrollCsv}
+          onPrintDailyBilling={handlePrintDailyBilling}
+          onPrintPayrollSummary={handlePrintPayrollSummary}
+          onSendReportPreview={handleSendReportPreview}
+          onStoreSettingsOpenChange={(open) => {
+            setIsStoreSettingsOpen(open);
+            if (open) {
+              setStoreSettingsForm(storeSettings);
             }
-            payrollSummaries={payrollSummaries}
-            payrollTotals={payrollTotals}
-            reportCompleted={reportCompleted}
-            reportStore={reportStore}
-            reportTotal={reportTotal}
-            reportVehicles={reportVehicles}
-            setReportStore={setReportStore}
-            t={t}
-            totalEmployees={totalEmployees}
-            totalOpenShifts={totalOpenShifts}
-            totalVehicles={totalVehicles}
-            vehicles={vehicles}
-          />
+          }}
+          onStoreSettingsSubmit={handleStoreSettingsSubmit}
+          onStoreSubmit={handleStoreSubmit}
+          payrollClosedAtLabel={
+            latestPayrollClosure
+              ? formatDateWithWeekday(latestPayrollClosure.closedAt.slice(0, 10), language)
+              : t("Not closed yet", "Aun no se ha cerrado")
+          }
+          payrollSummaries={payrollSummaries}
+          payrollTotals={payrollTotals}
+          reportCompleted={reportCompleted}
+          reportStore={reportStore}
+          reportTotal={reportTotal}
+          reportVehicles={reportVehicles}
+          setReportStore={setReportStore}
+          setDeleteStoreFeedback={setDeleteStoreFeedback}
+          setDeleteStoreTarget={setDeleteStoreTarget}
+          setEditingStoreId={setEditingStoreId}
+          setIsStoreModalOpen={setIsStoreModalOpen}
+          setStoreSettingsForm={setStoreSettingsForm}
+          setStoreForm={setStoreForm}
+          storeSettings={storeSettings}
+          storeSettingsForm={storeSettingsForm}
+          stores={stores}
+          storeForm={storeForm}
+          t={t}
+          totalEmployees={totalEmployees}
+          totalOpenShifts={totalOpenShifts}
+          totalVehicles={totalVehicles}
+          vehicles={vehicles}
+        />
         ) : null}
       </div>
 

@@ -4,6 +4,7 @@ import type {
   AttendanceEntry,
   EmployeeEntry,
   PayrollClosureEntry,
+  StoreEntry,
   UserEntry,
   VehicleEntry,
   VehicleHistoryEvent,
@@ -76,13 +77,32 @@ type PayrollClosureRow = {
   closed_by: string;
 };
 
+type StoreRow = {
+  id: string;
+  name: string;
+  address: string;
+  phone: string;
+  logo_key: string;
+  created_at: string;
+};
+
 const TABLES = {
   attendance: "attendance_entries",
   employees: "employees",
   payrollClosures: "payroll_closures",
+  stores: "stores",
   users: "app_users",
   vehicles: "vehicles",
 } as const;
+
+const cachedTableIds: Record<string, Set<string>> = {
+  [TABLES.attendance]: new Set<string>(),
+  [TABLES.employees]: new Set<string>(),
+  [TABLES.payrollClosures]: new Set<string>(),
+  [TABLES.stores]: new Set<string>(),
+  [TABLES.users]: new Set<string>(),
+  [TABLES.vehicles]: new Set<string>(),
+};
 
 function getClient() {
   if (!isSupabaseConfigured || !supabase) {
@@ -242,25 +262,68 @@ function mapPayrollClosureEntry(entry: PayrollClosureEntry): PayrollClosureRow {
   };
 }
 
-async function replaceTable<T extends { id: string }>(table: string, rows: T[]) {
+function mapStoreRow(row: StoreRow): StoreEntry {
+  return {
+    id: row.id,
+    name: row.name,
+    address: row.address,
+    phone: row.phone,
+    logoKey: row.logo_key,
+    createdAt: row.created_at,
+  };
+}
+
+function mapStoreEntry(entry: StoreEntry): StoreRow {
+  return {
+    id: entry.id,
+    name: entry.name,
+    address: entry.address,
+    phone: entry.phone,
+    logo_key: entry.logoKey,
+    created_at: entry.createdAt,
+  };
+}
+
+function setCachedIds(table: string, ids: string[]) {
+  cachedTableIds[table] = new Set(ids);
+}
+
+async function syncTable<T extends { id: string }>(table: string, rows: T[]) {
   const client = getClient();
+  const nextIds = new Set(rows.map((row) => row.id));
+  const cachedIds = cachedTableIds[table] ?? new Set<string>();
 
-  const { error: deleteError } = await client.from(table).delete().not("id", "is", null);
-  if (deleteError) throw deleteError;
+  if (rows.length) {
+    const { error: upsertError } = await client.from(table).upsert(rows);
+    if (upsertError) throw upsertError;
+  }
 
-  if (!rows.length) return;
+  const idsToDelete = Array.from(cachedIds).filter((id) => !nextIds.has(id));
+  if (idsToDelete.length) {
+    const { error: deleteError } = await client.from(table).delete().in("id", idsToDelete);
+    if (deleteError) throw deleteError;
+  }
 
-  const { error: insertError } = await client.from(table).insert(rows);
-  if (insertError) throw insertError;
+  setCachedIds(table, Array.from(nextIds));
 }
 
 export const supabaseRepository: AppRepository = {
   async clearOperationalData() {
     await Promise.all([
-      replaceTable(TABLES.vehicles, []),
-      replaceTable(TABLES.attendance, []),
-      replaceTable(TABLES.employees, []),
+      getClient().from(TABLES.vehicles).delete().not("id", "is", null),
+      getClient().from(TABLES.attendance).delete().not("id", "is", null),
+      getClient().from(TABLES.employees).delete().not("id", "is", null),
     ]);
+    setCachedIds(TABLES.vehicles, []);
+    setCachedIds(TABLES.attendance, []);
+    setCachedIds(TABLES.employees, []);
+  },
+
+  async deleteVehicle(id: string) {
+    const client = getClient();
+    const { error } = await client.from(TABLES.vehicles).delete().eq("id", id);
+    if (error) throw error;
+    cachedTableIds[TABLES.vehicles].delete(id);
   },
 
   async load(): Promise<AppDataSnapshot> {
@@ -271,12 +334,14 @@ export const supabaseRepository: AppRepository = {
       { data: attendanceData, error: attendanceError },
       { data: employeesData, error: employeesError },
       { data: payrollClosuresData, error: payrollClosuresError },
+      { data: storesData, error: storesError },
       { data: usersData, error: usersError },
     ] = await Promise.all([
       client.from(TABLES.vehicles).select("*").order("created_at", { ascending: false }),
       client.from(TABLES.attendance).select("*").order("date", { ascending: false }),
       client.from(TABLES.employees).select("*").order("created_at", { ascending: false }),
       client.from(TABLES.payrollClosures).select("*").order("closed_at", { ascending: false }),
+      client.from(TABLES.stores).select("*").order("name", { ascending: true }),
       client.from(TABLES.users).select("*").order("created_at", { ascending: false }),
     ]);
 
@@ -284,30 +349,48 @@ export const supabaseRepository: AppRepository = {
     if (attendanceError) throw attendanceError;
     if (employeesError) throw employeesError;
     if (payrollClosuresError) throw payrollClosuresError;
+    if (storesError) throw storesError;
     if (usersError) throw usersError;
 
     const users = (usersData as UserRow[] | null)?.map(mapUserRow) ?? [DEFAULT_ADMIN_USER];
+    const vehicles = (vehiclesData as VehicleRow[] | null)?.map(mapVehicleRow) ?? [];
+    const attendance = (attendanceData as AttendanceRow[] | null)?.map(mapAttendanceRow) ?? [];
+    const employees = (employeesData as EmployeeRow[] | null)?.map(mapEmployeeRow) ?? [];
+    const payrollClosures =
+      (payrollClosuresData as PayrollClosureRow[] | null)?.map(mapPayrollClosureRow) ?? [];
+    const stores = (storesData as StoreRow[] | null)?.map(mapStoreRow) ?? [];
+
+    setCachedIds(TABLES.vehicles, vehicles.map((entry) => entry.id));
+    setCachedIds(TABLES.attendance, attendance.map((entry) => entry.id));
+    setCachedIds(TABLES.employees, employees.map((entry) => entry.id));
+    setCachedIds(TABLES.payrollClosures, payrollClosures.map((entry) => entry.id));
+    setCachedIds(TABLES.stores, stores.map((entry) => entry.id));
+    setCachedIds(TABLES.users, users.map((entry) => entry.id));
 
     return {
-      attendance: (attendanceData as AttendanceRow[] | null)?.map(mapAttendanceRow) ?? [],
-      employees: (employeesData as EmployeeRow[] | null)?.map(mapEmployeeRow) ?? [],
-      payrollClosures:
-        (payrollClosuresData as PayrollClosureRow[] | null)?.map(mapPayrollClosureRow) ?? [],
+      attendance,
+      employees,
+      payrollClosures,
+      stores,
       users,
-      vehicles: (vehiclesData as VehicleRow[] | null)?.map(mapVehicleRow) ?? [],
+      vehicles,
     };
   },
 
   async saveAttendance(attendance) {
-    await replaceTable(TABLES.attendance, attendance.map(mapAttendanceEntry));
+    await syncTable(TABLES.attendance, attendance.map(mapAttendanceEntry));
   },
 
   async saveEmployees(employees) {
-    await replaceTable(TABLES.employees, employees.map(mapEmployeeEntry));
+    await syncTable(TABLES.employees, employees.map(mapEmployeeEntry));
   },
 
   async savePayrollClosures(payrollClosures) {
-    await replaceTable(TABLES.payrollClosures, payrollClosures.map(mapPayrollClosureEntry));
+    await syncTable(TABLES.payrollClosures, payrollClosures.map(mapPayrollClosureEntry));
+  },
+
+  async saveStores(stores) {
+    await syncTable(TABLES.stores, stores.map(mapStoreEntry));
   },
 
   async saveUsers(users) {
@@ -315,6 +398,14 @@ export const supabaseRepository: AppRepository = {
   },
 
   async saveVehicles(vehicles) {
-    await replaceTable(TABLES.vehicles, vehicles.map(mapVehicleEntry));
+    await syncTable(TABLES.vehicles, vehicles.map(mapVehicleEntry));
+  },
+
+  async upsertVehicle(vehicle) {
+    const client = getClient();
+    const row = mapVehicleEntry(vehicle);
+    const { error } = await client.from(TABLES.vehicles).upsert(row);
+    if (error) throw error;
+    cachedTableIds[TABLES.vehicles].add(vehicle.id);
   },
 };

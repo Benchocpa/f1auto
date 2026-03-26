@@ -127,7 +127,7 @@ export function TimeView({
                     key={index}
                     className="flex h-16 items-center justify-center rounded-2xl border border-white/10 bg-stone-900 text-3xl font-semibold text-white shadow-sm sm:h-20 sm:text-4xl"
                   >
-                    {codeDigits[index] ?? ""}
+                    {codeDigits[index] ? "•" : ""}
                   </div>
                 ))}
               </div>

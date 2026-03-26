@@ -1,9 +1,9 @@
-export type StoreName = (typeof import("./config").STORES)[number];
+export type StoreName = string;
 export type VehicleStatus = "Pendiente" | "Entregado";
 export type AppView = "home" | "vehicles" | "time" | "admin";
 export type Language = "en" | "es";
 export type UserRole = "admin" | "operator";
-export type VehicleHistoryAction = "created" | "status" | "delivery_time";
+export type VehicleHistoryAction = "created" | "status" | "delivery_time" | "updated";
 export type Translate = (en: string, es: string) => string;
 
 export interface VehicleHistoryEvent {
@@ -65,6 +65,15 @@ export interface PayrollClosureEntry {
   closedBy: string;
 }
 
+export interface StoreEntry {
+  id: string;
+  name: StoreName;
+  address: string;
+  phone: string;
+  logoKey: string;
+  createdAt: string;
+}
+
 export interface UserEntry {
   id: string;
   authUserId?: string | null;
@@ -123,6 +132,18 @@ export interface PasswordResetFormState {
 export interface AccountPasswordFormState {
   password: string;
   confirmPassword: string;
+}
+
+export interface DeviceStoreSettings {
+  isConfigured: boolean;
+  store: StoreName;
+}
+
+export interface StoreFormState {
+  name: StoreName;
+  address: string;
+  phone: string;
+  logoKey: string;
 }
 
 export interface UserFormState {

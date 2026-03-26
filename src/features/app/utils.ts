@@ -76,6 +76,17 @@ export function normalizeEmployeeCode(value: string | null | undefined) {
   return (value ?? "").trim().toUpperCase();
 }
 
+export function getUniqueLocations(values: Array<string | null | undefined>) {
+  return Array.from(
+    new Set(
+      values
+        .map((value) => (value ?? "").trim())
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b))
+    )
+  );
+}
+
 export function getOpenShiftMinutes(dateValue: string, clockIn: string, now = new Date()) {
   const start = parseDateAndTime(dateValue, clockIn);
   if (!start) return null;

@@ -4,6 +4,7 @@ import type {
   AttendanceEntry,
   EmployeeEntry,
   PayrollClosureEntry,
+  StoreEntry,
   UserEntry,
   VehicleEntry,
 } from "../types";
@@ -17,8 +18,10 @@ interface UsePersistentAppDataParams {
   setAttendance: Dispatch<SetStateAction<AttendanceEntry[]>>;
   setEmployees: Dispatch<SetStateAction<EmployeeEntry[]>>;
   setPayrollClosures: Dispatch<SetStateAction<PayrollClosureEntry[]>>;
+  setStores: Dispatch<SetStateAction<StoreEntry[]>>;
   setUsers: Dispatch<SetStateAction<UserEntry[]>>;
   setVehicles: Dispatch<SetStateAction<VehicleEntry[]>>;
+  stores: StoreEntry[];
   users: UserEntry[];
   vehicles: VehicleEntry[];
 }
@@ -31,8 +34,10 @@ export function usePersistentAppData({
   setAttendance,
   setEmployees,
   setPayrollClosures,
+  setStores,
   setUsers,
   setVehicles,
+  stores,
   users,
   vehicles,
 }: UsePersistentAppDataParams) {
@@ -52,6 +57,7 @@ export function usePersistentAppData({
         setAttendance(snapshot.attendance);
         setEmployees(snapshot.employees);
         setPayrollClosures(snapshot.payrollClosures);
+        setStores(snapshot.stores);
         setUsers(snapshot.users);
         isSavingEnabledRef.current = true;
         setHydrationError(null);
@@ -74,12 +80,7 @@ export function usePersistentAppData({
     return () => {
       cancelled = true;
     };
-  }, [repository, setAttendance, setEmployees, setPayrollClosures, setUsers, setVehicles]);
-
-  useEffect(() => {
-    if (!isSavingEnabledRef.current) return;
-    void repository.saveVehicles(vehicles);
-  }, [repository, vehicles]);
+  }, [repository, setAttendance, setEmployees, setPayrollClosures, setStores, setUsers, setVehicles]);
 
   useEffect(() => {
     if (!isSavingEnabledRef.current) return;
@@ -95,6 +96,11 @@ export function usePersistentAppData({
     if (!isSavingEnabledRef.current) return;
     void repository.savePayrollClosures(payrollClosures);
   }, [payrollClosures, repository]);
+
+  useEffect(() => {
+    if (!isSavingEnabledRef.current) return;
+    void repository.saveStores(stores);
+  }, [repository, stores]);
 
   useEffect(() => {
     if (!isSavingEnabledRef.current) return;

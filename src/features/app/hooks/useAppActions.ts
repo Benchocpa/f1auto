@@ -10,6 +10,7 @@ import {
 } from "../config";
 import type { AppRepository } from "../data/repository";
 import { isSupabaseAuthEnabled, supabase } from "../data/supabaseClient";
+import { generateDailyBillingPdf } from "../dailyBillingPdf";
 import type {
   AttendanceEntry,
   AccountPasswordFormState,
@@ -20,6 +21,7 @@ import type {
   PayrollClosureEntry,
   PayrollEmployeeSummary,
   PasswordResetFormState,
+  StoreEntry,
   StoreName,
   Translate,
   UserEntry,
@@ -29,9 +31,10 @@ import type {
   VehicleHistoryAction,
   VehicleStatus,
 } from "../types";
-import { getCurrentTime, getTodayDate, normalizeEmployeeCode } from "../utils";
+import { formatCurrency, getCurrentTime, getTodayDate, normalizeEmployeeCode } from "../utils";
 
 interface UseAuthActionsParams {
+  activeStore: StoreName;
   accountPasswordForm: AccountPasswordFormState;
   currentUser: UserEntry | null;
   editingUserId: string | null;
@@ -58,6 +61,7 @@ interface UseAuthActionsParams {
 }
 
 export function useAuthActions({
+  activeStore,
   accountPasswordForm,
   currentUser,
   editingUserId,
@@ -174,8 +178,8 @@ export function useAuthActions({
         }
 
         setCurrentUser(user);
-        setActiveStore(user.store);
-        setReportStore(user.store);
+        setActiveStore(activeStore);
+        setReportStore(activeStore);
         setLoginForm(createLoginForm());
         setCurrentView("home");
         setFeedback(t(`Welcome back, ${user.fullName}.`, `Bienvenido de nuevo, ${user.fullName}.`));
@@ -200,8 +204,8 @@ export function useAuthActions({
       }
 
       setCurrentUser(user);
-      setActiveStore(user.store);
-      setReportStore(user.store);
+      setActiveStore(activeStore);
+      setReportStore(activeStore);
       setLoginForm(createLoginForm());
       setCurrentView("home");
       setFeedback(t(`Welcome back, ${user.fullName}.`, `Bienvenido de nuevo, ${user.fullName}.`));
@@ -431,8 +435,7 @@ export function useAuthActions({
       const duplicateClockInCode = users.some(
         (entry) =>
           entry.id !== editingUserId &&
-          normalizeEmployeeCode(entry.employeeCode) ===
-            normalizeEmployeeCode(userForm.employeeCode) && entry.store === userForm.store
+          normalizeEmployeeCode(entry.employeeCode) === normalizeEmployeeCode(userForm.employeeCode)
       );
 
       if (duplicateUser) {
@@ -443,8 +446,8 @@ export function useAuthActions({
       if (duplicateClockInCode) {
         setFeedback(
           t(
-            "That clock-in code already exists in this store.",
-            "Ese codigo de entrada ya existe en esta tienda."
+            "That clock-in code already exists.",
+            "Ese codigo de entrada ya existe."
           )
         );
         return;
@@ -518,8 +521,8 @@ export function useAuthActions({
           );
           if (currentUser?.id === savedUser.id) {
             setCurrentUser(savedUser);
-            setActiveStore(savedUser.store);
-            setReportStore(savedUser.store);
+            setActiveStore(activeStore);
+            setReportStore(activeStore);
           }
         } catch (error) {
           setFeedback(
@@ -532,7 +535,7 @@ export function useAuthActions({
         }
 
         setEditingUserId(null);
-        setUserForm(createUserForm());
+        setUserForm(createUserForm(activeStore));
         setIsUserModalOpen(false);
         setFeedback(
           t(
@@ -564,11 +567,11 @@ export function useAuthActions({
       );
       if (currentUser?.id === newUser.id) {
         setCurrentUser(newUser);
-        setActiveStore(newUser.store);
-        setReportStore(newUser.store);
+        setActiveStore(activeStore);
+        setReportStore(activeStore);
       }
       setEditingUserId(null);
-      setUserForm(createUserForm());
+      setUserForm(createUserForm(activeStore));
       setIsUserModalOpen(false);
       setFeedback(
         t(
@@ -578,6 +581,7 @@ export function useAuthActions({
       );
     },
     [
+      activeStore,
       callAdminEndpoint,
       currentUser,
       editingUserId,
@@ -716,6 +720,7 @@ export function useAuthActions({
 interface UseVehicleActionsParams {
   activeStore: StoreName;
   currentUser: UserEntry | null;
+  repository: AppRepository;
   setFeedback: Dispatch<SetStateAction<string | null>>;
   setVehicleForm: Dispatch<SetStateAction<VehicleFormState>>;
   setVehicles: Dispatch<SetStateAction<VehicleEntry[]>>;
@@ -726,6 +731,7 @@ interface UseVehicleActionsParams {
 export function useVehicleActions({
   activeStore,
   currentUser,
+  repository,
   setFeedback,
   setVehicleForm,
   setVehicles,
@@ -735,6 +741,11 @@ export function useVehicleActions({
   const handleVehicleSubmit = useCallback(
     (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
+
+      if (!vehicleForm.simo.trim()) {
+        setFeedback(t("Service is required.", "El servicio es obligatorio."));
+        return;
+      }
 
       const nowIso = new Date().toISOString();
       const actor = currentUser?.fullName ?? "System";
@@ -770,13 +781,78 @@ export function useVehicleActions({
       };
 
       setVehicles((current) => [newEntry, ...current]);
+      void repository.upsertVehicle(newEntry);
       setVehicleForm((current) => ({
         ...createVehicleForm(activeStore),
         salesPerson: currentUser?.fullName ?? "",
       }));
       setFeedback(t("Vehicle saved successfully.", "Vehiculo registrado correctamente."));
     },
-    [activeStore, currentUser?.fullName, setFeedback, setVehicleForm, setVehicles, t, vehicleForm]
+    [activeStore, currentUser?.fullName, repository, setFeedback, setVehicleForm, setVehicles, t, vehicleForm]
+  );
+
+  const updateVehicleEntry = useCallback(
+    (id: string, payload: VehicleFormState) => {
+      if (!payload.simo.trim()) {
+        setFeedback(t("Service is required.", "El servicio es obligatorio."));
+        return false;
+      }
+
+      const actor = currentUser?.fullName ?? "System";
+      const nowIso = new Date().toISOString();
+
+      let nextEntry: VehicleEntry | null = null;
+      setVehicles((current) =>
+        current.map((entry) => {
+          if (entry.id !== id) return entry;
+
+          nextEntry = {
+            ...entry,
+            date: payload.date,
+            store: payload.store,
+            stock: payload.stock.trim(),
+            make: payload.make.trim(),
+            model: payload.model.trim(),
+            vin: payload.vin.trim(),
+            salesPerson: (currentUser?.fullName ?? payload.salesPerson).trim(),
+            pickupTime: payload.pickupTime,
+            simo: payload.simo.trim(),
+            comments: payload.comments.trim(),
+            price: Number(payload.price || 0),
+            updatedAt: nowIso,
+            updatedBy: actor,
+            history: [
+              {
+                id: crypto.randomUUID(),
+                action: "updated",
+                timestamp: nowIso,
+                by: actor,
+                note: "Vehicle details updated.",
+              },
+              ...entry.history,
+            ],
+          };
+          return nextEntry;
+        })
+      );
+      if (nextEntry) {
+        void repository.upsertVehicle(nextEntry);
+      }
+
+      setFeedback(t("Vehicle updated successfully.", "Vehiculo actualizado correctamente."));
+      return true;
+    },
+    [currentUser?.fullName, repository, setFeedback, setVehicles, t]
+  );
+
+  const deleteVehicleEntry = useCallback(
+    (id: string) => {
+      setVehicles((current) => current.filter((entry) => entry.id !== id));
+      void repository.deleteVehicle(id);
+      setFeedback(t("Vehicle deleted successfully.", "Vehiculo eliminado correctamente."));
+      return true;
+    },
+    [repository, setFeedback, setVehicles, t]
   );
 
   const updateVehicleStatus = useCallback(
@@ -784,6 +860,7 @@ export function useVehicleActions({
       const actor = currentUser?.fullName ?? "System";
       const nowIso = new Date().toISOString();
 
+      let nextEntry: VehicleEntry | null = null;
       setVehicles((current) =>
         current.map((entry) => {
           if (entry.id !== id || entry.status === status) return entry;
@@ -791,7 +868,7 @@ export function useVehicleActions({
           const autoDeliveredTime =
             status === "Entregado" && !entry.deliveredTime ? getCurrentTime() : entry.deliveredTime;
 
-          return {
+          nextEntry = {
             ...entry,
             status,
             deliveredTime: autoDeliveredTime,
@@ -803,7 +880,11 @@ export function useVehicleActions({
                 action: "status",
                 timestamp: nowIso,
                 by: actor,
-                note: `Status changed to ${status}.`,
+                note: `Status changed to ${
+                  status === "Entregado"
+                    ? t("Complete", "Completo")
+                    : t("Pending", "Pendiente")
+                }.`,
               },
               ...(autoDeliveredTime && !entry.deliveredTime
                 ? [
@@ -819,10 +900,14 @@ export function useVehicleActions({
               ...entry.history,
             ],
           };
+          return nextEntry;
         })
       );
+      if (nextEntry) {
+        void repository.upsertVehicle(nextEntry);
+      }
     },
-    [currentUser?.fullName, setVehicles]
+    [currentUser?.fullName, repository, setVehicles, t]
   );
 
   const updateVehicleDeliveredTime = useCallback(
@@ -830,11 +915,12 @@ export function useVehicleActions({
       const actor = currentUser?.fullName ?? "System";
       const nowIso = new Date().toISOString();
 
+      let nextEntry: VehicleEntry | null = null;
       setVehicles((current) =>
         current.map((entry) => {
           if (entry.id !== id || entry.deliveredTime === deliveredTime) return entry;
 
-          return {
+          nextEntry = {
             ...entry,
             deliveredTime,
             updatedAt: nowIso,
@@ -852,14 +938,20 @@ export function useVehicleActions({
               ...entry.history,
             ],
           };
+          return nextEntry;
         })
       );
+      if (nextEntry) {
+        void repository.upsertVehicle(nextEntry);
+      }
     },
-    [currentUser?.fullName, setVehicles]
+    [currentUser?.fullName, repository, setVehicles]
   );
 
   return {
+    deleteVehicleEntry,
     handleVehicleSubmit,
+    updateVehicleEntry,
     updateVehicleDeliveredTime,
     updateVehicleStatus,
   };
@@ -1032,6 +1124,8 @@ interface UseAdminActionsParams {
   payrollSummaries: PayrollEmployeeSummary[];
   repository: AppRepository;
   reportStore: StoreName;
+  stores: StoreEntry[];
+  reportVehicles: VehicleEntry[];
   setAttendance: Dispatch<SetStateAction<AttendanceEntry[]>>;
   setEmployees: Dispatch<SetStateAction<EmployeeEntry[]>>;
   setFeedback: Dispatch<SetStateAction<string | null>>;
@@ -1046,6 +1140,8 @@ export function useAdminActions({
   payrollSummaries,
   repository,
   reportStore,
+  stores,
+  reportVehicles,
   setAttendance,
   setEmployees,
   setFeedback,
@@ -1061,14 +1157,115 @@ export function useAdminActions({
     setFeedback(t("Demo data reset.", "Datos reiniciados."));
   }, [repository, setAttendance, setEmployees, setFeedback, setVehicles, t]);
 
-  const handleSendReportPreview = useCallback(() => {
-    setFeedback(
+  const dailyBillingRows = useCallback(
+    () =>
+      reportVehicles.map((entry) => [
+        entry.date,
+        entry.stock,
+        entry.make,
+        entry.model,
+        entry.vin || "-",
+        entry.salesPerson,
+        entry.time,
+        entry.simo || "-",
+        entry.comments || "-",
+        formatCurrency(entry.price),
+      ]),
+    [reportVehicles]
+  );
+
+  const reportStoreRecord =
+    stores.find((entry) => entry.name.trim().toLowerCase() === reportStore.trim().toLowerCase()) ?? null;
+
+  const getAdminToken = useCallback(async () => {
+    if (!isSupabaseAuthEnabled || !supabase) {
+      throw new Error("This action requires Supabase auth.");
+    }
+
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error("You must be signed in as an administrator.");
+    }
+
+    return session.access_token;
+  }, []);
+
+  const buildDailyBillingPdf = useCallback(
+    async () =>
+      generateDailyBillingPdf({
+        store: reportStore,
+        logoKey: reportStoreRecord?.logoKey,
+        vehicles: reportVehicles,
+      }),
+    [reportStore, reportStoreRecord?.logoKey, reportVehicles]
+  );
+
+  const toBase64 = useCallback((bytes: Uint8Array) => {
+    let binary = "";
+    const chunkSize = 0x8000;
+
+    for (let index = 0; index < bytes.length; index += chunkSize) {
+      const chunk = bytes.subarray(index, index + chunkSize);
+      binary += String.fromCharCode(...chunk);
+    }
+
+    return btoa(binary);
+  }, []);
+
+  const handleSendReportPreview = useCallback(async () => {
+    const recipient = window.prompt(
       t(
-        `Daily report preview ready for ${reportStore}. Next step: connect email delivery.`,
-        `Vista previa del informe diario lista para ${reportStore}. Siguiente paso: conectar el envio por correo.`
+        "Enter the email address for the daily billing statement.",
+        "Ingresa el correo para la cuenta de cobro diaria."
       )
-    );
-  }, [reportStore, setFeedback, t]);
+    )?.trim();
+
+    if (!recipient) return;
+
+    try {
+      const token = await getAdminToken();
+      const pdfBytes = await buildDailyBillingPdf();
+      const pdfBase64 = toBase64(pdfBytes);
+      const filename = `daily-billing-${reportStore.replace(/\s+/g, "-").toLowerCase()}-${new Date().toISOString().slice(0, 10)}.pdf`;
+
+      const response = await fetch("/api/admin/send-daily-billing", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          recipient,
+          filename,
+          store: reportStore,
+          pdfBase64,
+        }),
+      });
+
+      const payload = (await response.json().catch(() => ({}))) as { error?: string };
+
+      if (!response.ok) {
+        throw new Error(payload.error || "Could not send the billing statement.");
+      }
+
+      setFeedback(
+        t(
+          `Billing statement sent to ${recipient}.`,
+          `Cuenta de cobro enviada a ${recipient}.`
+        )
+      );
+    } catch (error) {
+      setFeedback(
+        t(
+          error instanceof Error ? error.message : "Could not send the billing statement.",
+          error instanceof Error ? error.message : "No se pudo enviar la cuenta de cobro."
+        )
+      );
+    }
+  }, [buildDailyBillingPdf, getAdminToken, reportStore, setFeedback, t, toBase64]);
 
   const handleClosePayrollPeriod = useCallback((adminPin: string) => {
     const normalizedAdminPin = normalizeEmployeeCode(adminPin);
@@ -1149,6 +1346,41 @@ export function useAdminActions({
     );
   }, [payrollSummaries, reportStore, setFeedback, t]);
 
+  const exportDailyBillingCsv = useCallback(() => {
+    const headers = [
+      "Date",
+      "Stock",
+      "Make",
+      "Model",
+      "VIN",
+      "Sales Person",
+      "Time",
+      "SIMO",
+      "Comments",
+      "Price",
+    ];
+
+    const rows = dailyBillingRows();
+    const csv = [headers, ...rows]
+      .map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `billing-${reportStore.replace(/\s+/g, "-").toLowerCase()}-${new Date().toISOString().slice(0, 10)}.csv`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+
+    setFeedback(
+      t(
+        `Billing Excel export ready for ${reportStore}.`,
+        `Exportacion de cobro en Excel lista para ${reportStore}.`
+      )
+    );
+  }, [dailyBillingRows, reportStore, setFeedback, t]);
+
   const handlePrintPayrollSummary = useCallback(() => {
     const reportWindow = window.open("", "_blank", "width=980,height=720");
     if (!reportWindow) {
@@ -1213,9 +1445,42 @@ export function useAdminActions({
     reportWindow.print();
   }, [payrollSummaries, reportStore, setFeedback, t]);
 
+  const handlePrintDailyBilling = useCallback(async () => {
+    try {
+      const pdfBytes = await buildDailyBillingPdf();
+      const normalizedPdfBytes = new Uint8Array(pdfBytes.byteLength);
+      normalizedPdfBytes.set(pdfBytes);
+      const blob = new Blob([normalizedPdfBytes], {
+        type: "application/pdf",
+      });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `daily-billing-${reportStore.replace(/\s+/g, "-").toLowerCase()}-${new Date().toISOString().slice(0, 10)}.pdf`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+
+      setFeedback(
+        t(
+          `Billing PDF ready for ${reportStore}.`,
+          `PDF de cobro listo para ${reportStore}.`
+        )
+      );
+    } catch (error) {
+      setFeedback(
+        t(
+          error instanceof Error ? error.message : "Could not export the billing PDF.",
+          error instanceof Error ? error.message : "No se pudo exportar el PDF del cobro."
+        )
+      );
+    }
+  }, [buildDailyBillingPdf, reportStore, setFeedback, t]);
+
   return {
+    exportDailyBillingCsv,
     exportPayrollCsv,
     handleClosePayrollPeriod,
+    handlePrintDailyBilling,
     handlePrintPayrollSummary,
     handleSendReportPreview,
     resetDemoData,

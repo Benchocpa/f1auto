@@ -49,6 +49,15 @@ create table if not exists public.payroll_closures (
   closed_by text not null
 );
 
+create table if not exists public.stores (
+  id text primary key,
+  name text not null unique,
+  address text not null default '',
+  phone text not null default '',
+  logo_key text not null default '',
+  created_at text not null
+);
+
 create table if not exists public.app_users (
   id text primary key,
   auth_user_id uuid unique,
@@ -67,4 +76,5 @@ alter table public.vehicles disable row level security;
 alter table public.attendance_entries disable row level security;
 alter table public.employees disable row level security;
 alter table public.payroll_closures disable row level security;
+alter table public.stores disable row level security;
 alter table public.app_users disable row level security;
