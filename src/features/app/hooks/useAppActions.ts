@@ -747,8 +747,8 @@ export function useVehicleActions({
         make: vehicleForm.make.trim(),
         model: vehicleForm.model.trim(),
         vin: vehicleForm.vin.trim(),
-        salesPerson: vehicleForm.salesPerson.trim(),
-        time: vehicleForm.time,
+        salesPerson: (currentUser?.fullName ?? vehicleForm.salesPerson).trim(),
+        time: getCurrentTime(),
         pickupTime: vehicleForm.pickupTime,
         deliveredTime: "",
         simo: vehicleForm.simo.trim(),
@@ -770,7 +770,10 @@ export function useVehicleActions({
       };
 
       setVehicles((current) => [newEntry, ...current]);
-      setVehicleForm(createVehicleForm(activeStore));
+      setVehicleForm((current) => ({
+        ...createVehicleForm(activeStore),
+        salesPerson: currentUser?.fullName ?? "",
+      }));
       setFeedback(t("Vehicle saved successfully.", "Vehiculo registrado correctamente."));
     },
     [activeStore, currentUser?.fullName, setFeedback, setVehicleForm, setVehicles, t, vehicleForm]

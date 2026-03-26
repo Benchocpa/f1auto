@@ -139,10 +139,14 @@ function App() {
   });
 
   useEffect(() => {
-    setVehicleForm((current) => ({ ...current, store: activeStore }));
+    setVehicleForm((current) => ({
+      ...current,
+      store: activeStore,
+      salesPerson: currentUser?.fullName ?? current.salesPerson,
+    }));
     setAttendanceForm((current) => ({ ...current, store: activeStore }));
     setReportStore(activeStore);
-  }, [activeStore]);
+  }, [activeStore, currentUser?.fullName]);
 
   useEffect(() => {
     if (!feedback) return;

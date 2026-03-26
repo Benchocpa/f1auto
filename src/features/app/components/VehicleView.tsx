@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { Input } from "../../../components/ui/input";
@@ -69,8 +69,6 @@ export function VehicleView({
   vehicleFilters,
   vehicleForm,
 }: VehicleViewProps) {
-  const [areVehicleDetailsVisible, setAreVehicleDetailsVisible] = useState(false);
-
   const pendingCount = useMemo(
     () => filteredVehicles.filter((entry) => entry.status === "Pendiente").length,
     [filteredVehicles]
@@ -160,17 +158,12 @@ export function VehicleView({
             />
           </Field>
 
-          <Field label={t("Sales person", "Responsable")}>
+          <Field label={t("Responsible", "Responsable")}>
             <Input
               value={vehicleForm.salesPerson}
-              onChange={(event) =>
-                setVehicleForm((current) => ({
-                  ...current,
-                  salesPerson: event.target.value,
-                }))
-              }
+              readOnly
               className="h-12 rounded-2xl"
-              placeholder={t("Receiving employee", "Empleado que recibe")}
+              placeholder={t("Logged-in user", "Usuario logueado")}
               required
             />
           </Field>
@@ -191,21 +184,6 @@ export function VehicleView({
             <p className="text-xs text-stone-400">
               {formatDateWithWeekday(vehicleForm.date, language)}
             </p>
-          </Field>
-
-          <Field label={t("Drop-off time", "Hora de entrada")}>
-            <Input
-              type="time"
-              value={vehicleForm.time}
-              onChange={(event) =>
-                setVehicleForm((current) => ({
-                  ...current,
-                  time: event.target.value,
-                }))
-              }
-              className="h-12 rounded-2xl"
-              required
-            />
           </Field>
 
           <Field label={t("Pickup time", "Hora de recogida")}>
@@ -239,74 +217,58 @@ export function VehicleView({
             />
           </Field>
 
-          <div className="md:col-span-2 xl:col-span-4">
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => setAreVehicleDetailsVisible((current) => !current)}
-            >
-              {areVehicleDetailsVisible
-                ? t("Hide optional details", "Ocultar detalles opcionales")
-                : t("Show optional details", "Mostrar detalles opcionales")}
-            </Button>
-          </div>
+          <Field label="VIN" className="md:col-span-2 xl:col-span-2">
+            <Input
+              value={vehicleForm.vin}
+              onChange={(event) =>
+                setVehicleForm((current) => ({
+                  ...current,
+                  vin: event.target.value,
+                }))
+              }
+              className="h-12 rounded-2xl"
+              placeholder={t("VIN or identifier", "VIN o identificador")}
+            />
+          </Field>
 
-          {areVehicleDetailsVisible ? (
-            <>
-              <Field label="VIN" className="md:col-span-2 xl:col-span-2">
-                <Input
-                  value={vehicleForm.vin}
-                  onChange={(event) =>
-                    setVehicleForm((current) => ({
-                      ...current,
-                      vin: event.target.value,
-                    }))
-                  }
-                  className="h-12 rounded-2xl"
-                  placeholder={t("VIN or identifier", "VIN o identificador")}
-                />
-              </Field>
+          <Field
+            label={t("Service / SIMO", "SIMO / Servicio")}
+            className="md:col-span-2 xl:col-span-2"
+          >
+            <Input
+              value={vehicleForm.simo}
+              onChange={(event) =>
+                setVehicleForm((current) => ({
+                  ...current,
+                  simo: event.target.value,
+                }))
+              }
+              className="h-12 rounded-2xl"
+              placeholder={t(
+                "Service type, package, or SIMO",
+                "Tipo de servicio, paquete o SIMO"
+              )}
+            />
+          </Field>
 
-              <Field
-                label={t("Service / SIMO", "SIMO / Servicio")}
-                className="md:col-span-2 xl:col-span-2"
-              >
-                <Input
-                  value={vehicleForm.simo}
-                  onChange={(event) =>
-                    setVehicleForm((current) => ({
-                      ...current,
-                      simo: event.target.value,
-                    }))
-                  }
-                  className="h-12 rounded-2xl"
-                  placeholder={t(
-                    "Service type, package, or SIMO",
-                    "Tipo de servicio, paquete o SIMO"
-                  )}
-                />
-              </Field>
-
-              <Field
-                label={t("Comments", "Comentarios")}
-                className="md:col-span-2 xl:col-span-4"
-              >
-                <Textarea
-                  value={vehicleForm.comments}
-                  onChange={(event) =>
-                    setVehicleForm((current) => ({
-                      ...current,
-                      comments: event.target.value,
-                    }))
-                  }
-                  placeholder={t(
-                    "Vehicle notes or instructions",
-                    "Observaciones del vehiculo o instrucciones"
-                  )}
-                />
-              </Field>
-            </>
-          ) : null}
+          <Field
+            label={t("Comments", "Comentarios")}
+            className="md:col-span-2 xl:col-span-4"
+          >
+            <Textarea
+              value={vehicleForm.comments}
+              onChange={(event) =>
+                setVehicleForm((current) => ({
+                  ...current,
+                  comments: event.target.value,
+                }))
+              }
+              placeholder={t(
+                "Vehicle notes or instructions",
+                "Observaciones del vehiculo o instrucciones"
+              )}
+            />
+          </Field>
 
           <div className="md:col-span-2 xl:col-span-4 flex flex-wrap gap-3">
             <Button type="submit" className="h-12 rounded-2xl px-6 text-base">
@@ -490,7 +452,10 @@ export function VehicleView({
             {filteredVehicles.length ? (
               filteredVehicles.map((entry) => (
                 <TableRow key={entry.id}>
-                  <TableCell>{formatDateWithWeekday(entry.date, language)}</TableCell>
+                  <TableCell>
+                    <div>{formatDateWithWeekday(entry.date, language)}</div>
+                    <div className="text-xs text-stone-400">{entry.time}</div>
+                  </TableCell>
                   <TableCell className="font-medium">{entry.stock}</TableCell>
                   <TableCell>{entry.store}</TableCell>
                   <TableCell>
@@ -498,7 +463,6 @@ export function VehicleView({
                     <div className="text-xs text-stone-400">{entry.vin || "-"}</div>
                   </TableCell>
                   <TableCell>{entry.salesPerson}</TableCell>
-                  <TableCell>{entry.time}</TableCell>
                   <TableCell>{entry.pickupTime || "-"}</TableCell>
                   <TableCell>
                     <Input
@@ -512,22 +476,29 @@ export function VehicleView({
                   </TableCell>
                   <TableCell>{formatCurrency(entry.price)}</TableCell>
                   <TableCell>
-                    <Select
-                      value={entry.status}
-                      onChange={(event) =>
-                        updateVehicleStatus(entry.id, event.target.value as VehicleStatus)
-                      }
-                      className="min-w-[130px]"
-                    >
-                      <option value="Pendiente">{t("Pending", "Pendiente")}</option>
-                      <option value="Entregado">{t("Delivered", "Entregado")}</option>
-                    </Select>
+                    <div className="space-y-2">
+                      <Badge variant={entry.status === "Entregado" ? "success" : "warning"}>
+                        {entry.status === "Entregado"
+                          ? t("Delivered", "Entregado")
+                          : t("Pending", "Pendiente")}
+                      </Badge>
+                      <Select
+                        value={entry.status}
+                        onChange={(event) =>
+                          updateVehicleStatus(entry.id, event.target.value as VehicleStatus)
+                        }
+                        className="min-w-[130px]"
+                      >
+                        <option value="Pendiente">{t("Pending", "Pendiente")}</option>
+                        <option value="Entregado">{t("Delivered", "Entregado")}</option>
+                      </Select>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={10} className="py-8 text-center text-stone-400">
+                <TableCell colSpan={9} className="py-8 text-center text-stone-400">
                   {t(
                     "No vehicles match the selected filters.",
                     "No hay vehiculos que coincidan con los filtros seleccionados."
