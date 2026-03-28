@@ -151,14 +151,14 @@ export function StatCard({
   detail: string;
 }) {
   return (
-    <article className="relative overflow-hidden rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.12),rgba(255,255,255,0.05))] p-5 shadow-[0_22px_60px_rgba(0,0,0,0.24)] backdrop-blur">
+    <article className="relative overflow-hidden rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.12),rgba(255,255,255,0.05))] px-4 py-3.5 shadow-[0_18px_44px_rgba(0,0,0,0.22)] backdrop-blur">
       <div className="pointer-events-none absolute inset-x-5 top-0 h-px bg-gradient-to-r from-transparent via-white/40 to-transparent" />
-      <div className="mb-5 inline-flex h-11 w-11 items-center justify-center rounded-[18px] border border-amber-200/10 bg-amber-300/14 text-amber-200">
+      <div className="mb-3 inline-flex h-9 w-9 items-center justify-center rounded-[15px] border border-amber-200/10 bg-amber-300/14 text-amber-200">
         {icon}
       </div>
-      <p className="text-sm text-stone-300">{label}</p>
-      <p className="mt-2 text-4xl font-semibold tracking-tight text-white">{value}</p>
-      <p className="mt-3 max-w-[18ch] text-sm leading-6 text-stone-400">{detail}</p>
+      <p className="text-[15px] text-stone-300">{label}</p>
+      <p className="mt-1.5 text-[2rem] font-semibold leading-none tracking-tight text-white">{value}</p>
+      <p className="mt-2 max-w-[18ch] text-sm leading-5 text-stone-400">{detail}</p>
     </article>
   );
 }
@@ -191,18 +191,18 @@ export function LocationBrand({
     return (
       <div className="flex items-center gap-4">
         {logoSrc ? (
-          <div className="flex h-16 w-16 items-center justify-center rounded-[22px] border border-white/10 bg-white p-1.5 shadow-[0_16px_40px_rgba(0,0,0,0.22)]">
+          <div className="flex h-14 w-14 items-center justify-center rounded-[20px] border border-white/10 bg-white p-1.5 shadow-[0_12px_30px_rgba(0,0,0,0.2)]">
             <img src={logoSrc} alt={logoAlt} className="h-full w-full scale-[1.22] object-contain" />
           </div>
         ) : (
-          <div className={`flex h-16 w-16 items-center justify-center rounded-[22px] bg-gradient-to-br ${theme.accentClass} text-xl font-semibold text-stone-950 shadow-[0_16px_40px_rgba(0,0,0,0.22)]`}>
+          <div className={`flex h-14 w-14 items-center justify-center rounded-[20px] bg-gradient-to-br ${theme.accentClass} text-lg font-semibold text-stone-950 shadow-[0_12px_30px_rgba(0,0,0,0.2)]`}>
             {theme.monogram}
           </div>
         )}
         <div>
           <p className="text-[11px] uppercase tracking-[0.32em] text-stone-500">{theme.eyebrow}</p>
-          <p className="mt-1 text-[28px] font-semibold leading-none tracking-tight text-white">{title}</p>
-          {subtitle ? <p className="mt-2 text-sm text-stone-300">{subtitle}</p> : null}
+          <p className="mt-1 text-[20px] font-semibold leading-none tracking-tight text-white">{title}</p>
+          {subtitle ? <p className="mt-1.5 text-sm text-stone-300">{subtitle}</p> : null}
         </div>
       </div>
     );

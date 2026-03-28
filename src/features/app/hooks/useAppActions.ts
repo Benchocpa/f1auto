@@ -729,9 +729,14 @@ export function useVehicleActions({
       const nowIso = new Date().toISOString();
 
       let nextEntry: VehicleEntry | null = null;
+      let preventedCompletedEdit = false;
       setVehicles((current) =>
         current.map((entry) => {
           if (entry.id !== id) return entry;
+          if (entry.status === "Entregado") {
+            preventedCompletedEdit = true;
+            return entry;
+          }
 
           nextEntry = {
             ...entry,
@@ -762,6 +767,15 @@ export function useVehicleActions({
           return nextEntry;
         })
       );
+      if (preventedCompletedEdit) {
+        setFeedback(
+          t(
+            "Completed vehicles cannot be edited.",
+            "Los vehiculos completos no se pueden editar."
+          )
+        );
+        return false;
+      }
       if (nextEntry) {
         void repository.upsertVehicle(nextEntry);
       }
@@ -788,9 +802,14 @@ export function useVehicleActions({
       const nowIso = new Date().toISOString();
 
       let nextEntry: VehicleEntry | null = null;
+      let preventedReopen = false;
       setVehicles((current) =>
         current.map((entry) => {
           if (entry.id !== id || entry.status === status) return entry;
+          if (entry.status === "Entregado" && status === "Pendiente") {
+            preventedReopen = true;
+            return entry;
+          }
 
           const autoDeliveredTime =
             status === "Entregado" && !entry.deliveredTime ? getCurrentTime() : entry.deliveredTime;
@@ -830,6 +849,15 @@ export function useVehicleActions({
           return nextEntry;
         })
       );
+      if (preventedReopen) {
+        setFeedback(
+          t(
+            "Completed vehicles cannot return to pending.",
+            "Los vehiculos completos no pueden volver a pendiente."
+          )
+        );
+        return;
+      }
       if (nextEntry) {
         void repository.upsertVehicle(nextEntry);
       }
@@ -1076,6 +1104,22 @@ export function useAdminActions({
   setVehicles,
   t,
 }: UseAdminActionsParams) {
+  const resolveDailyBillingContext = useCallback(
+    (storeOverride?: StoreName, vehiclesOverride?: VehicleEntry[]) => {
+      const resolvedStore = storeOverride ?? reportStore;
+      const resolvedVehicles = vehiclesOverride ?? reportVehicles;
+      const resolvedStoreRecord =
+        stores.find((entry) => entry.name.trim().toLowerCase() === resolvedStore.trim().toLowerCase()) ?? null;
+
+      return {
+        store: resolvedStore,
+        storeRecord: resolvedStoreRecord,
+        vehicles: resolvedVehicles,
+      };
+    },
+    [reportStore, reportVehicles, stores]
+  );
+
   const resetDemoData = useCallback(() => {
     void repository.clearOperationalData();
     setVehicles([]);
@@ -1085,8 +1129,8 @@ export function useAdminActions({
   }, [repository, setAttendance, setEmployees, setFeedback, setVehicles, t]);
 
   const dailyBillingRows = useCallback(
-    () =>
-      reportVehicles.map((entry) => [
+    (vehiclesOverride?: VehicleEntry[]) =>
+      (vehiclesOverride ?? reportVehicles).map((entry) => [
         entry.date,
         entry.stock,
         entry.make,
@@ -1101,20 +1145,20 @@ export function useAdminActions({
     [reportVehicles]
   );
 
-  const reportStoreRecord =
-    stores.find((entry) => entry.name.trim().toLowerCase() === reportStore.trim().toLowerCase()) ?? null;
-
   const buildDailyBillingPdf = useCallback(
-    async () =>
-      generateDailyBillingPdf({
-        store: reportStore,
-        logoKey: reportStoreRecord?.logoKey,
-        vehicles: reportVehicles,
-      }),
-    [reportStore, reportStoreRecord?.logoKey, reportVehicles]
+    async (storeOverride?: StoreName, vehiclesOverride?: VehicleEntry[]) => {
+      const { store, storeRecord, vehicles } = resolveDailyBillingContext(storeOverride, vehiclesOverride);
+      return generateDailyBillingPdf({
+        store,
+        logoKey: storeRecord?.logoKey,
+        vehicles,
+      });
+    },
+    [resolveDailyBillingContext]
   );
 
-  const handleSendReportPreview = useCallback(() => {
+  const handleSendReportPreview = useCallback((storeOverride?: StoreName, vehiclesOverride?: VehicleEntry[]) => {
+    const { store, vehicles } = resolveDailyBillingContext(storeOverride, vehiclesOverride);
     const recipient = window.prompt(
       t(
         "Enter the email address for the daily billing statement.",
@@ -1123,17 +1167,17 @@ export function useAdminActions({
     )?.trim();
     if (!recipient) return;
 
-    const total = reportVehicles.reduce((sum, entry) => sum + entry.price, 0);
+    const total = vehicles.reduce((sum, entry) => sum + entry.price, 0);
     const body = encodeURIComponent(
       [
-        `${t("Daily billing statement", "Cuenta de cobro diaria")} · ${reportStore}`,
-        `${t("Vehicles", "Vehiculos")}: ${reportVehicles.length}`,
+        `${t("Daily billing statement", "Cuenta de cobro diaria")} · ${store}`,
+        `${t("Vehicles", "Vehiculos")}: ${vehicles.length}`,
         `${t("Total amount", "Monto total")}: ${formatCurrency(total)}`,
         `${t("Date", "Fecha")}: ${new Date().toLocaleDateString()}`,
       ].join("\n")
     );
     const subject = encodeURIComponent(
-      `${t("Daily billing statement", "Cuenta de cobro diaria")} · ${reportStore}`
+      `${t("Daily billing statement", "Cuenta de cobro diaria")} · ${store}`
     );
 
     window.location.href = `mailto:${recipient}?subject=${subject}&body=${body}`;
@@ -1143,7 +1187,7 @@ export function useAdminActions({
         "Correo preparado. Adjunta el PDF manualmente antes de enviarlo."
       )
     );
-  }, [reportStore, reportVehicles, setFeedback, t]);
+  }, [resolveDailyBillingContext, setFeedback, t]);
 
   const handleClosePayrollPeriod = useCallback((adminPin: string) => {
     const normalizedAdminPin = normalizeEmployeeCode(adminPin);
@@ -1224,7 +1268,8 @@ export function useAdminActions({
     );
   }, [payrollSummaries, reportStore, setFeedback, t]);
 
-  const exportDailyBillingCsv = useCallback(() => {
+  const exportDailyBillingCsv = useCallback((storeOverride?: StoreName, vehiclesOverride?: VehicleEntry[]) => {
+    const { store, vehicles } = resolveDailyBillingContext(storeOverride, vehiclesOverride);
     const headers = [
       "Date",
       "Stock",
@@ -1238,7 +1283,7 @@ export function useAdminActions({
       "Price",
     ];
 
-    const rows = dailyBillingRows();
+    const rows = dailyBillingRows(vehicles);
     const csv = [headers, ...rows]
       .map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(","))
       .join("\n");
@@ -1247,17 +1292,17 @@ export function useAdminActions({
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `billing-${reportStore.replace(/\s+/g, "-").toLowerCase()}-${new Date().toISOString().slice(0, 10)}.csv`;
+    anchor.download = `billing-${store.replace(/\s+/g, "-").toLowerCase()}-${new Date().toISOString().slice(0, 10)}.csv`;
     anchor.click();
     URL.revokeObjectURL(url);
 
     setFeedback(
       t(
         `Billing Excel export ready for ${reportStore}.`,
-        `Exportacion de cobro en Excel lista para ${reportStore}.`
+        `Exportacion de cobro en Excel lista para ${store}.`
       )
     );
-  }, [dailyBillingRows, reportStore, setFeedback, t]);
+  }, [dailyBillingRows, resolveDailyBillingContext, setFeedback, t]);
 
   const handlePrintPayrollSummary = useCallback(() => {
     const reportWindow = window.open("", "_blank", "width=980,height=720");
@@ -1323,9 +1368,10 @@ export function useAdminActions({
     reportWindow.print();
   }, [payrollSummaries, reportStore, setFeedback, t]);
 
-  const handlePrintDailyBilling = useCallback(async () => {
+  const handlePrintDailyBilling = useCallback(async (storeOverride?: StoreName, vehiclesOverride?: VehicleEntry[]) => {
+    const { store } = resolveDailyBillingContext(storeOverride, vehiclesOverride);
     try {
-      const pdfBytes = await buildDailyBillingPdf();
+      const pdfBytes = await buildDailyBillingPdf(storeOverride, vehiclesOverride);
       const normalizedPdfBytes = new Uint8Array(pdfBytes.byteLength);
       normalizedPdfBytes.set(pdfBytes);
       const blob = new Blob([normalizedPdfBytes], {
@@ -1334,14 +1380,14 @@ export function useAdminActions({
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = `daily-billing-${reportStore.replace(/\s+/g, "-").toLowerCase()}-${new Date().toISOString().slice(0, 10)}.pdf`;
+      anchor.download = `daily-billing-${store.replace(/\s+/g, "-").toLowerCase()}-${new Date().toISOString().slice(0, 10)}.pdf`;
       anchor.click();
       URL.revokeObjectURL(url);
 
       setFeedback(
         t(
           `Billing PDF ready for ${reportStore}.`,
-          `PDF de cobro listo para ${reportStore}.`
+          `PDF de cobro listo para ${store}.`
         )
       );
     } catch (error) {
@@ -1352,7 +1398,7 @@ export function useAdminActions({
         )
       );
     }
-  }, [buildDailyBillingPdf, reportStore, setFeedback, t]);
+  }, [buildDailyBillingPdf, resolveDailyBillingContext, setFeedback, t]);
 
   return {
     exportDailyBillingCsv,

@@ -94,7 +94,8 @@ export const createUserForm = (store: StoreName = DEFAULT_LOCATION_NAME): UserFo
 
 export const createVehicleFilters = (): VehicleFiltersState => ({
   search: "",
-  date: "",
+  datePreset: "today",
+  date: getTodayDate(),
   status: "all",
   salesPerson: "",
   store: "all",

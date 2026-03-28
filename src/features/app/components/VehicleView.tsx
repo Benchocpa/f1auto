@@ -25,7 +25,7 @@ import type {
   VehicleFormState,
   VehicleStatus,
 } from "../types";
-import { formatCurrency, formatDateWithWeekday, formatTimestamp } from "../utils";
+import { formatCurrency, formatDateWithWeekday, formatTimestamp, getTodayDate } from "../utils";
 import { Field } from "./common";
 
 interface VehicleViewProps {
@@ -142,6 +142,15 @@ export function VehicleView({
             .sort((a, b) => a.localeCompare(b))
         )
       ),
+    [vehicleRecords]
+  );
+  const overduePendingVehicles = useMemo(
+    () =>
+      vehicleRecords
+        .filter(
+          (entry) => entry.status === "Pendiente" && entry.date < getTodayDate()
+        )
+        .sort((a, b) => a.date.localeCompare(b.date)),
     [vehicleRecords]
   );
   const buildInvoiceTitle = (entry: VehicleEntry) => `${entry.make} ${entry.model} · ${entry.stock}`;
@@ -471,6 +480,24 @@ export function VehicleView({
           </div>
         </div>
 
+        {overduePendingVehicles.length ? (
+          <div className="mb-4 rounded-2xl border border-amber-400/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+            <p className="font-medium">
+              {t(
+                `${overduePendingVehicles.length} pending vehicles from previous days need review.`,
+                `${overduePendingVehicles.length} vehiculos pendientes de dias anteriores necesitan revision.`
+              )}
+            </p>
+            <p className="mt-1 text-amber-50/85">
+              {overduePendingVehicles
+                .slice(0, 4)
+                .map((entry) => `${entry.make} ${entry.model} · ${entry.stock} · ${entry.date}`)
+                .join(" · ")}
+              {overduePendingVehicles.length > 4 ? " ..." : ""}
+            </p>
+          </div>
+        ) : null}
+
         {areVehicleFiltersVisible ? (
           <>
             <div
@@ -515,17 +542,26 @@ export function VehicleView({
               </Field>
 
               <Field label={t("Date", "Fecha")}>
-                <Input
-                  type="date"
-                  value={vehicleFilters.date}
+                <Select
+                  value={vehicleFilters.datePreset}
                   onChange={(event) =>
                     setVehicleFilters((current) => ({
                       ...current,
-                      date: event.target.value,
+                      datePreset: event.target.value as VehicleFiltersState["datePreset"],
+                      date:
+                        event.target.value === "specific"
+                          ? current.date || new Date().toISOString().slice(0, 10)
+                          : current.date,
                     }))
                   }
                   className="h-12 rounded-2xl"
-                />
+                >
+                  <option value="today">{t("Today", "Hoy")}</option>
+                  <option value="yesterday">{t("Yesterday", "Ayer")}</option>
+                  <option value="week">{t("This week", "Esta semana")}</option>
+                  <option value="month">{t("This month", "Este mes")}</option>
+                  <option value="specific">{t("Specific day", "Dia especifico")}</option>
+                </Select>
               </Field>
 
               {currentUser.role === "admin" ? (
@@ -569,6 +605,22 @@ export function VehicleView({
             </div>
 
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {vehicleFilters.datePreset === "specific" ? (
+                <Field label={t("Specific date", "Fecha especifica")}>
+                  <Input
+                    type="date"
+                    value={vehicleFilters.date || new Date().toISOString().slice(0, 10)}
+                    onChange={(event) =>
+                      setVehicleFilters((current) => ({
+                        ...current,
+                        date: event.target.value,
+                      }))
+                    }
+                    className="h-12 rounded-2xl"
+                  />
+                </Field>
+              ) : null}
+
               <Field label={t("Make", "Marca")}>
                 <Select value={makeFilter} onChange={(event) => setMakeFilter(event.target.value)}>
                   <option value="Todas">{t("All makes", "Todas las marcas")}</option>
@@ -648,58 +700,66 @@ export function VehicleView({
                     <TableCell>{entry.simo || "-"}</TableCell>
                     <TableCell>{formatCurrency(entry.price)}</TableCell>
                     <TableCell>
-                      <Button
-                        type="button"
-                        className={`min-w-[130px] rounded-2xl ${
-                          entry.status === "Entregado"
-                            ? "bg-emerald-100 text-emerald-900 hover:bg-emerald-200"
-                            : "bg-amber-100 text-amber-900 hover:bg-amber-200"
-                        }`}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          setStatusConfirmation({
-                            id: entry.id,
-                            nextStatus: entry.status === "Entregado" ? "Pendiente" : "Entregado",
-                            vehicleLabel: `${entry.make} ${entry.model} · ${entry.stock}`,
-                          });
-                        }}
-                      >
-                        {entry.status === "Entregado"
-                          ? t("Complete", "Completo")
-                          : t("Pending", "Pendiente")}
-                      </Button>
+                      {entry.status === "Entregado" ? (
+                        <Button
+                          type="button"
+                          className="min-w-[130px] cursor-default rounded-2xl bg-emerald-100 text-emerald-900 hover:bg-emerald-100"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                          }}
+                        >
+                          {t("Complete", "Completo")}
+                        </Button>
+                      ) : (
+                        <Button
+                          type="button"
+                          className="min-w-[130px] rounded-2xl bg-amber-100 text-amber-900 hover:bg-amber-200"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setStatusConfirmation({
+                              id: entry.id,
+                              nextStatus: "Entregado",
+                              vehicleLabel: `${entry.make} ${entry.model} · ${entry.stock}`,
+                            });
+                          }}
+                        >
+                          {t("Pending", "Pendiente")}
+                        </Button>
+                      )}
                     </TableCell>
                   </TableRow>
                   {expandedVehicleId === entry.id ? (
                     <TableRow className="bg-white/[0.03] hover:bg-white/[0.03]">
                       <TableCell colSpan={11} className="px-4 py-4">
                         <div className="flex flex-wrap gap-3">
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            size="sm"
-                            className="rounded-full"
-                            onClick={() => {
-                              setEditingVehicle(entry);
-                              setEditingVehicleForm({
-                                store: entry.store,
-                                date: entry.date,
-                                stock: entry.stock,
-                                make: entry.make,
-                                model: entry.model,
-                                vin: entry.vin,
-                                salesPerson: entry.salesPerson,
-                                time: entry.time,
-                                pickupTime: entry.pickupTime,
-                                simo: entry.simo,
-                                comments: entry.comments,
-                                price: String(entry.price),
-                              });
-                            }}
-                          >
-                            <Pencil className="mr-2 h-4 w-4" />
-                            {t("Edit", "Editar")}
-                          </Button>
+                          {entry.status !== "Entregado" ? (
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              className="rounded-full"
+                              onClick={() => {
+                                setEditingVehicle(entry);
+                                setEditingVehicleForm({
+                                  store: entry.store,
+                                  date: entry.date,
+                                  stock: entry.stock,
+                                  make: entry.make,
+                                  model: entry.model,
+                                  vin: entry.vin,
+                                  salesPerson: entry.salesPerson,
+                                  time: entry.time,
+                                  pickupTime: entry.pickupTime,
+                                  simo: entry.simo,
+                                  comments: entry.comments,
+                                  price: String(entry.price),
+                                });
+                              }}
+                            >
+                              <Pencil className="mr-2 h-4 w-4" />
+                              {t("Edit", "Editar")}
+                            </Button>
+                          ) : null}
                           <Button
                             type="button"
                             variant="destructive"
@@ -809,21 +869,14 @@ export function VehicleView({
           <DialogContent className="max-w-md rounded-3xl border-white/10 bg-stone-950 p-6 text-stone-100">
             <DialogHeader>
               <DialogTitle className="text-white">
-                {statusConfirmation?.nextStatus === "Entregado"
-                  ? t("Confirm completion", "Confirmar completado")
-                  : t("Return to pending", "Regresar a pendiente")}
+                {t("Confirm completion", "Confirmar completado")}
               </DialogTitle>
               <DialogDescription className="text-stone-400">
                 {statusConfirmation
-                  ? statusConfirmation.nextStatus === "Entregado"
-                    ? t(
-                        `Confirm that ${statusConfirmation.vehicleLabel} was completed.`,
-                        `Confirma que ${statusConfirmation.vehicleLabel} fue completado.`
-                      )
-                    : t(
-                        `Confirm that ${statusConfirmation.vehicleLabel} should return to pending.`,
-                        `Confirma que ${statusConfirmation.vehicleLabel} debe volver a pendiente.`
-                      )
+                  ? t(
+                      `Confirm that ${statusConfirmation.vehicleLabel} was completed.`,
+                      `Confirma que ${statusConfirmation.vehicleLabel} fue completado.`
+                    )
                   : ""}
               </DialogDescription>
             </DialogHeader>
@@ -838,20 +891,14 @@ export function VehicleView({
               </Button>
               <Button
                 type="button"
-                className={
-                  statusConfirmation?.nextStatus === "Entregado"
-                    ? "bg-emerald-100 text-emerald-900 hover:bg-emerald-200"
-                    : "bg-amber-100 text-amber-900 hover:bg-amber-200"
-                }
+                className="bg-emerald-100 text-emerald-900 hover:bg-emerald-200"
                 onClick={() => {
                   if (!statusConfirmation) return;
                   updateVehicleStatus(statusConfirmation.id, statusConfirmation.nextStatus);
                   setStatusConfirmation(null);
                 }}
               >
-                {statusConfirmation?.nextStatus === "Entregado"
-                  ? t("Confirm completion", "Confirmar completado")
-                  : t("Return to pending", "Regresar a pendiente")}
+                {t("Confirm completion", "Confirmar completado")}
               </Button>
             </div>
           </DialogContent>

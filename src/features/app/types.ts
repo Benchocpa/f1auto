@@ -1,9 +1,11 @@
 export type StoreName = string;
 export type VehicleStatus = "Pendiente" | "Entregado";
-export type AppView = "home" | "vehicles" | "time" | "admin";
+export type AppView = "home" | "vehicles" | "time" | "admin" | "users";
 export type Language = "en" | "es";
 export type UserRole = "admin" | "operator";
 export type VehicleHistoryAction = "created" | "status" | "delivery_time" | "updated";
+export type SalesPeriodPreset = "today" | "yesterday" | "week" | "month" | "year" | "custom";
+export type VehicleDatePreset = "today" | "yesterday" | "week" | "month" | "specific";
 export type Translate = (en: string, es: string) => string;
 
 export interface VehicleHistoryEvent {
@@ -158,6 +160,7 @@ export interface UserFormState {
 
 export interface VehicleFiltersState {
   search: string;
+  datePreset: VehicleDatePreset;
   date: string;
   status: "all" | VehicleStatus;
   salesPerson: string;
@@ -184,4 +187,28 @@ export interface PayrollEmployeeSummary {
   totalHours: number;
   openShiftCount: number;
   alertCount: number;
+}
+
+export interface UserWorkSummary {
+  userId: string;
+  fullName: string;
+  email: string;
+  employeeCode: string;
+  jobTitle: string;
+  role: UserRole;
+  store: StoreName;
+  isBlocked: boolean;
+  workedTodayHours: number;
+  workedWeekHours: number;
+  openShiftCount: number;
+  currentShiftMinutes: number;
+  openShiftStore: StoreName | null;
+  lastActivityAt: string | null;
+  lastStore: StoreName;
+  weekDailyHours: Array<{
+    date: string;
+    hours: number;
+    clockIn: string | null;
+    clockOut: string | null;
+  }>;
 }

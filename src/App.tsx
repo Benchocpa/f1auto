@@ -5,11 +5,8 @@ import {
   CarFront,
   Clock3,
   LayoutDashboard,
-  Lock,
   LogOut,
-  Pencil,
   Shield,
-  Trash2,
   Users,
 } from "lucide-react";
 import {
@@ -38,6 +35,7 @@ import { isSupabaseAuthEnabled, supabase } from "./features/app/data/supabaseCli
 import { usePersistentAppData } from "./features/app/hooks/usePersistentAppData";
 import { LoginScreen } from "./features/app/components/LoginScreen";
 import { TimeView } from "./features/app/components/TimeView";
+import { UserView } from "./features/app/components/UserView";
 import { VehicleView } from "./features/app/components/VehicleView";
 import type {
   AdminStoreStat,
@@ -51,6 +49,7 @@ import type {
   PayrollClosureEntry,
   PayrollEmployeeSummary,
   PasswordResetFormState,
+  SalesPeriodPreset,
   StoreFormState,
   StoreEntry,
   StoreName,
@@ -67,8 +66,11 @@ import {
   buildPayrollSummary,
   formatCurrency,
   formatDateWithWeekday,
+  buildUserWorkSummaries,
+  getSalesPeriodRange,
   getUniqueLocations,
   getTodayDate,
+  isDateWithinRange,
   normalizeEmployeeCode,
 } from "./features/app/utils";
 import { Badge } from "./components/ui/badge";
@@ -80,7 +82,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "./components/ui/dialog";
 import { Select } from "./components/ui/select";
 function App() {
@@ -109,6 +110,9 @@ function App() {
   const [isPublicTimeControlMode, setIsPublicTimeControlMode] = useState(false);
   const [activeStore, setActiveStore] = useState<StoreName>(initialDeviceStoreSettings.store || DEFAULT_LOCATION_NAME);
   const [reportStore, setReportStore] = useState<StoreName>(initialDeviceStoreSettings.store || DEFAULT_LOCATION_NAME);
+  const [salesPeriod, setSalesPeriod] = useState<SalesPeriodPreset>("today");
+  const [salesCustomStart, setSalesCustomStart] = useState(getTodayDate());
+  const [salesCustomEnd, setSalesCustomEnd] = useState(getTodayDate());
   const [storeSettings, setStoreSettings] = useState<DeviceStoreSettings>(initialDeviceStoreSettings);
   const [storeSettingsForm, setStoreSettingsForm] = useState<DeviceStoreSettings>(initialDeviceStoreSettings);
   const [isStoreSettingsOpen, setIsStoreSettingsOpen] = useState(false);
@@ -137,7 +141,6 @@ function App() {
   const [userForm, setUserForm] = useState<UserFormState>(() => createUserForm());
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
-  const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
   const [deleteUserTarget, setDeleteUserTarget] = useState<UserEntry | null>(null);
   const [deleteUserPin, setDeleteUserPin] = useState("");
   const [blockUserTarget, setBlockUserTarget] = useState<UserEntry | null>(null);
@@ -193,7 +196,7 @@ function App() {
 
   useEffect(() => {
     if (currentUser?.role === "admin") return;
-    if (currentView !== "admin") return;
+    if (currentView !== "admin" && currentView !== "users") return;
     setCurrentView("home");
   }, [currentUser, currentView]);
 
@@ -350,14 +353,48 @@ function App() {
 
   const filteredVehicles = useMemo(() => {
     let result = scopedVehicleRecords;
+    const today = getTodayDate();
+    let vehicleDateStart = today;
+    let vehicleDateEnd = today;
+
+    switch (vehicleFilters.datePreset) {
+      case "today":
+        vehicleDateStart = today;
+        vehicleDateEnd = today;
+        break;
+      case "yesterday": {
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayValue = yesterday.toISOString().slice(0, 10);
+        vehicleDateStart = yesterdayValue;
+        vehicleDateEnd = yesterdayValue;
+        break;
+      }
+      case "week": {
+        const range = getSalesPeriodRange("week", "", "");
+        vehicleDateStart = range.start;
+        vehicleDateEnd = range.end;
+        break;
+      }
+      case "month": {
+        const range = getSalesPeriodRange("month", "", "");
+        vehicleDateStart = range.start;
+        vehicleDateEnd = range.end;
+        break;
+      }
+      case "specific":
+        vehicleDateStart = vehicleFilters.date || today;
+        vehicleDateEnd = vehicleFilters.date || today;
+        break;
+    }
 
     if (makeFilter !== "Todas") {
       result = result.filter((entry) => entry.make === makeFilter);
     }
 
-    if (vehicleFilters.date) {
-      result = result.filter((entry) => entry.date === vehicleFilters.date);
-    }
+    result = result.filter((entry) =>
+      isDateWithinRange(entry.date, vehicleDateStart, vehicleDateEnd)
+    );
 
     if (vehicleFilters.status !== "all") {
       result = result.filter((entry) => entry.status === vehicleFilters.status);
@@ -462,6 +499,28 @@ function App() {
     [attendanceByStore]
   );
 
+  const salesRange = useMemo(
+    () => getSalesPeriodRange(salesPeriod, salesCustomStart, salesCustomEnd),
+    [salesCustomEnd, salesCustomStart, salesPeriod]
+  );
+
+  const salesPeriodLabel = useMemo(() => {
+    switch (salesPeriod) {
+      case "today":
+        return t("Today", "Hoy");
+      case "yesterday":
+        return t("Yesterday", "Ayer");
+      case "week":
+        return t("This week", "Esta semana");
+      case "month":
+        return t("This month", "Este mes");
+      case "year":
+        return t("This year", "Este ano");
+      case "custom":
+        return t("Custom range", "Rango personalizado");
+    }
+  }, [salesPeriod, t]);
+
   const todayVehicles = useMemo(
     () => vehiclesByStore.filter((entry) => entry.date === getTodayDate()),
     [vehiclesByStore]
@@ -490,6 +549,27 @@ function App() {
   ).length;
   const totalOpenShifts = attendance.filter((entry) => !entry.clockOut).length;
   const totalEmployees = users.length;
+  const globalPeriodVehicles = useMemo(
+    () =>
+      vehicles.filter((entry) =>
+        isDateWithinRange(entry.date, salesRange.start, salesRange.end)
+      ),
+    [salesRange.end, salesRange.start, vehicles]
+  );
+  const globalPeriodCompletedVehicles = useMemo(
+    () =>
+      globalPeriodVehicles.filter((entry) => entry.status === "Entregado").length,
+    [globalPeriodVehicles]
+  );
+  const globalPeriodPendingVehicles = useMemo(
+    () =>
+      globalPeriodVehicles.filter((entry) => entry.status === "Pendiente").length,
+    [globalPeriodVehicles]
+  );
+  const globalPeriodSales = useMemo(
+    () => globalPeriodVehicles.reduce((sum, entry) => sum + entry.price, 0),
+    [globalPeriodVehicles]
+  );
 
   const adminStoreStats = useMemo<AdminStoreStat[]>(
     () =>
@@ -500,7 +580,7 @@ function App() {
         const openShifts = storeAttendance.filter((entry) => !entry.clockOut).length;
         const pending = storeVehicles.filter((entry) => entry.status === "Pendiente").length;
         const salesToday = storeVehicles
-          .filter((entry) => entry.date === getTodayDate())
+          .filter((entry) => isDateWithinRange(entry.date, salesRange.start, salesRange.end))
           .reduce((total, entry) => total + entry.price, 0);
 
         return {
@@ -512,15 +592,19 @@ function App() {
           salesToday,
         };
       }),
-    [attendance, availableLocations, users, vehicles]
+    [attendance, availableLocations, salesRange.end, salesRange.start, users, vehicles]
   );
 
   const reportVehicles = useMemo(
     () =>
       vehicles
-        .filter((entry) => entry.store === reportStore && entry.date === getTodayDate())
+        .filter(
+          (entry) =>
+            entry.store === reportStore &&
+            isDateWithinRange(entry.date, salesRange.start, salesRange.end)
+        )
         .sort((a, b) => a.time.localeCompare(b.time)),
-    [reportStore, vehicles]
+    [reportStore, salesRange.end, salesRange.start, vehicles]
   );
 
   const reportTotal = useMemo(
@@ -533,32 +617,84 @@ function App() {
     [reportVehicles]
   );
 
-  const latestPayrollClosure = useMemo(
+  const storeReportMap = useMemo(
     () =>
-      payrollClosures
-        .filter((entry) => entry.store === reportStore)
-        .sort((a, b) => new Date(b.closedAt).getTime() - new Date(a.closedAt).getTime())[0] ?? null,
-    [payrollClosures, reportStore]
+      new Map(
+        availableLocations.map((store) => [
+          store,
+          vehicles
+            .filter(
+              (entry) =>
+                entry.store === store &&
+                isDateWithinRange(entry.date, salesRange.start, salesRange.end)
+            )
+            .sort((a, b) => a.time.localeCompare(b.time)),
+        ])
+      ),
+    [availableLocations, salesRange.end, salesRange.start, vehicles]
   );
 
-  const payrollSummaries = useMemo<PayrollEmployeeSummary[]>(
-    () =>
-      buildPayrollSummary({
+  const userPayrollData = useMemo(() => {
+    const latestClosureByStore = new Map<StoreName, PayrollClosureEntry | null>();
+
+    availableLocations.forEach((store) => {
+      const latestClosure =
+        payrollClosures
+          .filter((entry) => entry.store === store)
+          .sort((a, b) => new Date(b.closedAt).getTime() - new Date(a.closedAt).getTime())[0] ?? null;
+      latestClosureByStore.set(store, latestClosure);
+    });
+
+    const byUserId = new Map<
+      string,
+      {
+        summary: PayrollEmployeeSummary | null;
+        periodLabel: string;
+        store: StoreName;
+      }
+    >();
+
+    users.forEach((user) => {
+      const latestClosure = latestClosureByStore.get(user.store) ?? null;
+      byUserId.set(user.id, {
+        summary: null,
+        periodLabel: latestClosure
+          ? formatDateWithWeekday(latestClosure.closedAt.slice(0, 10), language)
+          : t("Not closed yet", "Aun no se ha cerrado"),
+        store: user.store,
+      });
+    });
+
+    availableLocations.forEach((store) => {
+      const latestClosure = latestClosureByStore.get(store) ?? null;
+      const summaries = buildPayrollSummary({
         attendance,
-        payrollPeriodStart: latestPayrollClosure?.closedAt ?? null,
-        store: reportStore,
+        payrollPeriodStart: latestClosure?.closedAt ?? null,
+        store,
+        users,
+      });
+
+      summaries.forEach((summary) => {
+        byUserId.set(summary.userId, {
+          summary,
+          periodLabel: latestClosure
+            ? formatDateWithWeekday(latestClosure.closedAt.slice(0, 10), language)
+            : t("Not closed yet", "Aun no se ha cerrado"),
+          store,
+        });
+      });
+    });
+
+    return byUserId;
+  }, [attendance, availableLocations, language, payrollClosures, t, users]);
+
+  const userWorkSummaries = useMemo(
+    () =>
+      buildUserWorkSummaries({
+        attendance,
         users,
       }),
-    [attendance, latestPayrollClosure?.closedAt, reportStore, users]
-  );
-
-  const payrollTotals = useMemo(
-    () => ({
-      regularHours: payrollSummaries.reduce((sum, entry) => sum + entry.regularHours, 0),
-      overtimeHours: payrollSummaries.reduce((sum, entry) => sum + entry.overtimeHours, 0),
-      totalHours: payrollSummaries.reduce((sum, entry) => sum + entry.totalHours, 0),
-    }),
-    [payrollSummaries]
+    [attendance, users]
   );
 
   const {
@@ -619,18 +755,91 @@ function App() {
     usersByStore,
   });
 
+  const handleAdminAttendanceCorrection = useMemo(
+    () =>
+      (payload: {
+        user: UserEntry;
+        date: string;
+        clockIn: string;
+        clockOut: string;
+        store: StoreName;
+        notes: string;
+      }) => {
+        if (!payload.clockIn) {
+          setFeedback(t("Clock-in time is required.", "La hora de entrada es obligatoria."));
+          return false;
+        }
+
+        if (payload.clockOut && payload.clockOut < payload.clockIn) {
+          setFeedback(
+            t(
+              "Clock-out cannot be earlier than clock-in.",
+              "La hora de salida no puede ser anterior a la hora de entrada."
+            )
+          );
+          return false;
+        }
+
+        const normalizedCode = normalizeEmployeeCode(payload.user.employeeCode);
+
+        setAttendance((current) => {
+          const existingEntry = current.find(
+            (entry) =>
+              normalizeEmployeeCode(entry.employeeCode) === normalizedCode &&
+              entry.date === payload.date
+          );
+
+          if (existingEntry) {
+            return current.map((entry) =>
+              entry.id === existingEntry.id
+                ? {
+                    ...entry,
+                    employeeName: payload.user.fullName,
+                    role: payload.user.jobTitle,
+                    store: payload.store,
+                    clockIn: payload.clockIn,
+                    clockOut: payload.clockOut || null,
+                    notes: payload.notes.trim(),
+                  }
+                : entry
+            );
+          }
+
+          const createdEntry: AttendanceEntry = {
+            id: crypto.randomUUID(),
+            employeeCode: normalizedCode,
+            employeeName: payload.user.fullName,
+            role: payload.user.jobTitle,
+            store: payload.store,
+            date: payload.date,
+            clockIn: payload.clockIn,
+            clockOut: payload.clockOut || null,
+            notes: payload.notes.trim(),
+          };
+
+          return [createdEntry, ...current];
+        });
+
+        setFeedback(
+          t(
+            "Attendance updated successfully.",
+            "La asistencia se actualizo correctamente."
+          )
+        );
+        return true;
+      },
+    [setAttendance, setFeedback, t]
+  );
+
   const {
     exportDailyBillingCsv,
-    exportPayrollCsv,
-    handleClosePayrollPeriod,
     handlePrintDailyBilling,
-    handlePrintPayrollSummary,
     handleSendReportPreview,
     resetDemoData,
   } = useAdminActions({
     currentUser,
     payrollClosures,
-    payrollSummaries,
+    payrollSummaries: [],
     repository: appRepository,
     reportStore,
     reportVehicles,
@@ -658,6 +867,12 @@ function App() {
     () => [configuredStoreRecord?.address].filter(Boolean).join(" · "),
     [configuredStoreRecord?.address]
   );
+  const isGlobalView = currentView === "admin" || currentView === "users";
+  const heroBrandTitle = isGlobalView ? "F1 Auto Details" : configuredStoreLabel;
+  const heroBrandSubtitle = isGlobalView
+    ? t("Global access", "Acceso global")
+    : configuredStoreSubtitle;
+  const heroBrandLogoKey = isGlobalView ? "" : configuredStoreRecord?.logoKey ?? "";
 
   const handleStoreSettingsSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -698,6 +913,48 @@ function App() {
       t(
         "Location configuration saved.",
         "La configuracion de la ubicacion se guardo."
+      )
+    );
+  };
+
+  const setDefaultStore = (store: StoreName) => {
+    const normalizedStoreName = store.trim();
+
+    if (!normalizedStoreName) {
+      setFeedback(t("Location name is required.", "El nombre de la ubicacion es obligatorio."));
+      return;
+    }
+
+    const storeExists = stores.some(
+      (entry) => entry.name.trim().toLowerCase() === normalizedStoreName.toLowerCase()
+    );
+
+    if (!storeExists) {
+      setFeedback(
+        t(
+          "Select an existing store for this computer.",
+          "Selecciona una store existente para esta computadora."
+        )
+      );
+      return;
+    }
+
+    const nextSettings: DeviceStoreSettings = {
+      isConfigured: true,
+      store: normalizedStoreName,
+    };
+
+    setStoreSettings(nextSettings);
+    setStoreSettingsForm(nextSettings);
+    setActiveStore(nextSettings.store);
+    setReportStore(nextSettings.store);
+    setVehicleForm((current) => ({ ...current, store: nextSettings.store }));
+    setAttendanceForm((current) => ({ ...current, store: nextSettings.store }));
+    setIsStoreSettingsOpen(false);
+    setFeedback(
+      t(
+        `${normalizedStoreName} is now the default store on this computer.`,
+        `${normalizedStoreName} ahora es la store predeterminada en esta computadora.`
       )
     );
   };
@@ -778,6 +1035,26 @@ function App() {
     setDeleteStoreTarget(null);
     setFeedback(t("Store deleted successfully.", "Store eliminada correctamente."));
     return true;
+  };
+
+  const openCreateUserModal = () => {
+    setEditingUserId(null);
+    setUserForm(createUserForm(activeStore));
+    setIsUserModalOpen(true);
+  };
+
+  const openEditUserModal = (user: UserEntry) => {
+    setEditingUserId(user.id);
+    setUserForm({
+      fullName: user.fullName,
+      email: user.email,
+      password: "",
+      employeeCode: user.employeeCode,
+      store: user.store,
+      jobTitle: user.jobTitle,
+      role: user.role,
+    });
+    setIsUserModalOpen(true);
   };
 
   if (!isHydrated) {
@@ -1009,31 +1286,33 @@ function App() {
   return (
     <main className="min-h-screen bg-stone-950 text-stone-100">
       <div className="mx-auto flex min-h-screen max-w-7xl flex-col gap-8 px-4 py-6 sm:px-6 lg:px-8">
-        <section className="relative overflow-hidden rounded-[34px] border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(180,147,78,0.16),transparent_28%),linear-gradient(120deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] px-7 py-7 shadow-[0_30px_100px_rgba(0,0,0,0.32)]">
+        <section className="relative overflow-hidden rounded-[34px] border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(180,147,78,0.16),transparent_28%),linear-gradient(120deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] px-6 py-4 shadow-[0_30px_100px_rgba(0,0,0,0.32)]">
           <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-white/35 to-transparent" />
-          <div className="flex flex-col gap-8 xl:flex-row xl:items-end xl:justify-between">
-            <div className="max-w-3xl space-y-5">
+          <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+            <div className="max-w-3xl space-y-3">
               <LocationBrand
-                title={configuredStoreLabel}
-                subtitle={configuredStoreSubtitle}
-                logoKey={configuredStoreRecord?.logoKey ?? ""}
+                title={heroBrandTitle}
+                subtitle={heroBrandSubtitle}
+                logoKey={heroBrandLogoKey}
                 compact
               />
-              <div className="inline-flex items-center gap-2 rounded-full border border-amber-200/15 bg-amber-300/8 px-3 py-1.5 text-[11px] uppercase tracking-[0.28em] text-stone-200">
+              <div className="inline-flex items-center gap-2 rounded-full border border-amber-200/15 bg-amber-300/8 px-3 py-1 text-[10px] uppercase tracking-[0.28em] text-stone-200">
                 <Building2 className="h-4 w-4" />
                 {t("F1 Auto Details Control Center", "Centro de control F1 Auto Details")}
               </div>
-              <div className="space-y-3">
-                <h1 className="max-w-3xl text-5xl font-semibold tracking-[-0.04em] text-white sm:text-6xl">
+              <div className="space-y-2">
+                <h1 className="max-w-3xl text-[1.25rem] font-semibold leading-[1.02] tracking-[-0.025em] text-white sm:text-[1.45rem] xl:text-[1.7rem]">
                   {currentView === "home"
                     ? t("Main operations panel.", "Panel principal de operaciones.")
                     : currentView === "vehicles"
                       ? t("Vehicle intake and tracking.", "Ingreso y seguimiento de vehiculos.")
                       : currentView === "time"
                         ? t("Time control and attendance.", "Control de tiempo y asistencia.")
+                        : currentView === "users"
+                          ? t("User control and activity.", "Control de usuarios y actividad.")
                         : t("Multi-store admin view.", "Vista administrativa multisucursal.")}
                 </h1>
-                <p className="max-w-2xl text-base leading-7 text-stone-300">
+                <p className="max-w-2xl text-[15px] leading-6 text-stone-300">
                   {currentView === "home"
                     ? t(
                         "From here you can open vehicle intake, time control, or the admin view with access to every store.",
@@ -1044,11 +1323,16 @@ function App() {
                           "Register vehicles, manage status, and review volume by brand in the active store.",
                           "Registra vehiculos, controla su estado y revisa el volumen por marca en la tienda activa."
                         )
-                      : currentView === "time"
+                    : currentView === "time"
                         ? t(
                             "Manage employees, clock-ins, clock-outs, and daily attendance from a focused view.",
                             "Gestiona empleados, entradas, salidas y asistencia diaria desde una vista enfocada."
                           )
+                        : currentView === "users"
+                          ? t(
+                              "Review system users, open shifts, worked hours, and access status from a dedicated control page.",
+                              "Revisa usuarios del sistema, turnos abiertos, horas trabajadas y estado de acceso desde una pagina dedicada."
+                            )
                         : t(
                             "Review all locations at once with operating metrics, active staff, and today sales.",
                             "Consulta todas las ubicaciones al mismo tiempo con indicadores operativos, personal activo y ventas del dia."
@@ -1057,26 +1341,38 @@ function App() {
               </div>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 xl:self-stretch">
+              {(() => {
+                const isGlobalOverview = currentView === "admin" || currentView === "users";
+                return (
+                  <>
               <StatCard
                 icon={<CarFront className="h-5 w-5" />}
-                label={t("Pending vehicles", "Vehiculos pendientes")}
-                value={String(currentView === "admin" ? totalVehicles - totalCompletedVehicles : pendingVehicles)}
+                label={
+                  isGlobalOverview
+                    ? t("Pending in period", "Pendientes del periodo")
+                    : t("Pending vehicles", "Vehiculos pendientes")
+                }
+                value={String(isGlobalOverview ? globalPeriodPendingVehicles : pendingVehicles)}
                 detail={
-                  currentView === "admin"
+                  isGlobalOverview
                     ? t(
-                        `${availableLocations.length} locations monitored`,
-                        `${availableLocations.length} ubicaciones monitoreadas`
+                        `${salesPeriodLabel} · ${availableLocations.length} locations`,
+                        `${salesPeriodLabel} · ${availableLocations.length} ubicaciones`
                       )
                     : t("Vehicles still in progress today", "Vehiculos aun en proceso hoy")
                 }
               />
               <StatCard
                 icon={<LayoutDashboard className="h-5 w-5" />}
-                label={t("Completed vehicles", "Vehiculos terminados")}
-                value={String(currentView === "admin" ? totalCompletedVehicles : completedVehicles)}
+                label={
+                  isGlobalOverview
+                    ? t("Completed in period", "Terminados del periodo")
+                    : t("Completed vehicles", "Vehiculos terminados")
+                }
+                value={String(isGlobalOverview ? globalPeriodCompletedVehicles : completedVehicles)}
                 detail={
-                  currentView === "admin"
+                  isGlobalOverview
                     ? t("Completed across all locations", "Terminados en todas las ubicaciones")
                     : t("Vehicles marked complete", "Vehiculos marcados como completos")
                 }
@@ -1084,13 +1380,13 @@ function App() {
               <StatCard
                 icon={<Users className="h-5 w-5" />}
                 label={
-                  currentView === "admin"
+                  isGlobalOverview
                     ? t("Active staff", "Personal activo")
                     : t("Active employees", "Empleados activos")
                 }
-                value={String(currentView === "admin" ? totalOpenShifts : activeShifts.length)}
+                value={String(isGlobalOverview ? totalOpenShifts : activeShifts.length)}
                 detail={
-                  currentView === "admin"
+                  isGlobalOverview
                     ? t(
                         `${totalEmployees} registered employees`,
                         `${totalEmployees} empleados registrados`
@@ -1103,18 +1399,25 @@ function App() {
               />
               <StatCard
                 icon={<Clock3 className="h-5 w-5" />}
-                label={t("Sales today", "Ventas hoy")}
+                label={
+                  isGlobalOverview
+                    ? t("Sales in period", "Ventas del periodo")
+                    : t("Sales today", "Ventas hoy")
+                }
                 value={formatCurrency(
-                  currentView === "admin"
-                    ? adminStoreStats.reduce((sum, item) => sum + item.salesToday, 0)
+                  isGlobalOverview
+                    ? globalPeriodSales
                     : todaySales
                 )}
                 detail={
-                  currentView === "admin"
+                  isGlobalOverview
                     ? t("Combined across all locations", "Consolidado de todas las ubicaciones")
                     : t("Revenue captured for today", "Facturacion registrada para hoy")
                 }
               />
+                  </>
+                );
+              })()}
             </div>
           </div>
         </section>
@@ -1152,478 +1455,54 @@ function App() {
         </section>
 
         {currentView === "home" ? (
-          <section className={currentUser.role === "admin" ? "grid gap-5 xl:grid-cols-[1.05fr_0.95fr]" : ""}>
-            <div className={`grid gap-4 ${currentUser.role === "admin" ? "sm:grid-cols-2" : "md:grid-cols-2 xl:grid-cols-3"}`}>
-              <HomeCard
-                icon={<CarFront className="h-6 w-6" />}
-                title={t("Vehicle intake", "Ingreso de vehiculos")}
-                description={t(
-                  "Intake form, status tracking, and brand filters.",
-                  "Formulario de captura, estado operativo y filtros por marca."
-                )}
-                onClick={() => setCurrentView("vehicles")}
-              />
-              <HomeCard
-                icon={<Clock3 className="h-6 w-6" />}
-                title={t("Time control", "Control de tiempo")}
-                description={t(
-                  "Clock-in, clock-out, and employee registration by code.",
-                  "Entrada, salida y registro de empleados por codigo."
-                )}
-                onClick={() => setCurrentView("time")}
-              />
-              <HomeCard
-                icon={<Shield className="h-6 w-6" />}
-                title={t("Administrator", "Administrador")}
-                description={t(
-                  "Global view with access to all locations and operating summary.",
-                  "Vista global con acceso a todas las ubicaciones y resumen operativo."
-                )}
-                onClick={() => setCurrentView("admin")}
-                disabled={currentUser.role !== "admin"}
-              />
-              {currentUser.role === "admin" ? (
-                <Dialog open={isUserModalOpen} onOpenChange={setIsUserModalOpen}>
-                  <DialogTrigger asChild>
-                    <HomeCard
-                      icon={<Users className="h-6 w-6" />}
-                      title={t("Register system users", "Registrar usuarios del sistema")}
-                      description={t(
-                        "Create administrator or user accounts and define the clock-in code.",
-                        "Crea cuentas de administrador o usuario y define el codigo de clock-in."
-                      )}
-                      onClick={() => {
-                        setEditingUserId(null);
-                        setUserForm(createUserForm(activeStore));
-                        setIsUserModalOpen(true);
-                      }}
-                    />
-                  </DialogTrigger>
-                  <DialogContent className="max-w-3xl rounded-3xl border-white/10 bg-stone-950 p-6 text-stone-100">
-                      <DialogHeader>
-                        <DialogTitle className="text-white">
-                          {editingUserId
-                            ? t("Edit user", "Editar usuario")
-                            : t("User registration", "Registro de usuarios")}
-                        </DialogTitle>
-                        <DialogDescription className="text-stone-400">
-                          {editingUserId
-                            ? t(
-                                "Update the selected user's profile, access role, clock-in code, and optionally set a new password.",
-                                "Actualiza el perfil, el rol, el codigo de clock-in y, si quieres, una nueva contrasena del usuario seleccionado."
-                              )
-                            : t(
-                                "Create operator or admin accounts with their clock-in code.",
-                                "Crea cuentas de operador o administrador con su codigo de clock-in."
-                              )}
-                        </DialogDescription>
-                      </DialogHeader>
-
-                      <form className="grid gap-4 md:grid-cols-2" onSubmit={handleUserSubmit}>
-                        <Field label={t("Full name", "Nombre completo")}>
-                          <Input
-                            value={userForm.fullName}
-                            onChange={(event) =>
-                              setUserForm((current) => ({
-                                ...current,
-                                fullName: event.target.value,
-                              }))
-                            }
-                            required
-                          />
-                        </Field>
-
-                        <Field label={t("Job title", "Cargo")}>
-                          <Input
-                            value={userForm.jobTitle}
-                            onChange={(event) =>
-                              setUserForm((current) => ({
-                                ...current,
-                                jobTitle: event.target.value,
-                              }))
-                            }
-                            placeholder={t("Washer, supervisor...", "Lavador, supervisor...")}
-                            required
-                          />
-                        </Field>
-
-                        <Field label={t("Email", "Correo")}>
-                          <Input
-                            type="email"
-                            value={userForm.email}
-                            onChange={(event) =>
-                              setUserForm((current) => ({
-                                ...current,
-                                email: event.target.value,
-                              }))
-                            }
-                            placeholder="operator@example.com"
-                            required
-                          />
-                        </Field>
-
-                        {!editingUserId ? (
-                          <Field label={t("Password", "Contrasena")}>
-                            <Input
-                              type="password"
-                              value={userForm.password}
-                              onChange={(event) =>
-                                setUserForm((current) => ({
-                                  ...current,
-                                  password: event.target.value,
-                                }))
-                              }
-                              required
-                            />
-                          </Field>
-                        ) : (
-                          <Field label={t("New password (optional)", "Nueva contrasena (opcional)")}>
-                            <Input
-                              type="password"
-                              value={userForm.password}
-                              onChange={(event) =>
-                                setUserForm((current) => ({
-                                  ...current,
-                                  password: event.target.value,
-                                }))
-                              }
-                              placeholder={t(
-                                "Leave blank to keep the current password",
-                                "Dejala vacia para mantener la contrasena actual"
-                              )}
-                            />
-                          </Field>
-                        )}
-
-                        <Field label={t("Clock-in code", "Codigo de clock-in")}>
-                          <Input
-                            value={userForm.employeeCode}
-                            onChange={(event) =>
-                              setUserForm((current) => ({
-                                ...current,
-                                employeeCode: event.target.value.replace(/\D/g, "").slice(0, 4),
-                              }))
-                            }
-                            inputMode="numeric"
-                            maxLength={4}
-                            placeholder="1234"
-                            required
-                          />
-                        </Field>
-
-                        <Field label={t("Access role", "Rol de acceso")} className="md:col-span-2">
-                          <Select
-                            value={userForm.role}
-                            onChange={(event) =>
-                              setUserForm((current) => ({
-                                ...current,
-                                role: event.target.value as UserRole,
-                              }))
-                            }
-                          >
-                            <option value="operator">{t("Operator", "Usuario")}</option>
-                            <option value="admin">{t("Administrator", "Administrador")}</option>
-                          </Select>
-                        </Field>
-
-                        <div className="md:col-span-2 flex flex-wrap gap-3">
-                          <Button type="submit">
-                            {editingUserId ? t("Update user", "Actualizar usuario") : t("Save user", "Guardar usuario")}
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            onClick={() => {
-                              setEditingUserId(null);
-                              setUserForm(createUserForm(activeStore));
-                            }}
-                          >
-                            {t("Clear", "Limpiar")}
-                          </Button>
-                        </div>
-                      </form>
-                  </DialogContent>
-                </Dialog>
-              ) : null}
-            </div>
-
+          <section className={`grid gap-4 ${currentUser.role === "admin" ? "sm:grid-cols-2 xl:grid-cols-4" : "md:grid-cols-2 xl:grid-cols-3"}`}>
+            <HomeCard
+              icon={<CarFront className="h-6 w-6" />}
+              title={t("Vehicle intake", "Ingreso de vehiculos")}
+              description={t(
+                "Intake form, status tracking, and brand filters.",
+                "Formulario de captura, estado operativo y filtros por marca."
+              )}
+              onClick={() => setCurrentView("vehicles")}
+            />
+            <HomeCard
+              icon={<Clock3 className="h-6 w-6" />}
+              title={t("Time control", "Control de tiempo")}
+              description={t(
+                "Clock-in, clock-out, and employee registration by code.",
+                "Entrada, salida y registro de empleados por codigo."
+              )}
+              onClick={() => setCurrentView("time")}
+            />
+            <HomeCard
+              icon={<Shield className="h-6 w-6" />}
+              title={t("Administrator", "Administrador")}
+              description={t(
+                "Global view with access to all locations and operating summary.",
+                "Vista global con acceso a todas las ubicaciones y resumen operativo."
+              )}
+              onClick={() => setCurrentView("admin")}
+              disabled={currentUser.role !== "admin"}
+            />
             {currentUser.role === "admin" ? (
-              <article className="overflow-hidden rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.03))] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.28)]">
-                <div className="flex items-center justify-between border-b border-white/10 pb-4">
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.24em] text-stone-500">
-                      {t("User management", "Gestion de usuarios")}
-                    </p>
-                    <h2 className="mt-2 text-2xl font-semibold tracking-tight text-white">
-                      {t("System users", "Usuarios del sistema")}
-                    </h2>
-                  </div>
-                  <Badge variant="secondary" className="border-white/10 bg-white/10 text-stone-100">
-                    {users.length} {t("users", "usuarios")}
-                  </Badge>
-                </div>
-
-                <div className="mt-6 grid gap-3">
-                  {users.map((user) => (
-                    <div
-                      key={user.id}
-                      className="overflow-hidden rounded-[24px] border border-white/10 bg-stone-950/55 text-sm text-stone-300 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
-                    >
-                      <button
-                        type="button"
-                        className="w-full px-5 py-4 text-left transition hover:bg-white/[0.03]"
-                        onClick={() =>
-                          setExpandedUserId((current) => (current === user.id ? null : user.id))
-                        }
-                      >
-                        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                          <div className="space-y-2">
-                            <div className="flex flex-wrap items-center gap-2 text-stone-100">
-                              <span className="text-base font-semibold tracking-tight">{user.fullName}</span>
-                              <Badge variant="secondary" className="border-white/10 bg-white/10 text-stone-100">
-                                {user.role === "admin"
-                                  ? t("Administrator", "Administrador")
-                                  : t("User", "Usuario")}
-                              </Badge>
-                              {user.isBlocked ? (
-                                <Badge variant="destructive" className="border-red-400/20 bg-red-500/15 text-red-100">{t("Blocked", "Bloqueado")}</Badge>
-                              ) : (
-                                <Badge variant="success" className="border-emerald-400/20 bg-emerald-500/15 text-emerald-100">{t("Active", "Activo")}</Badge>
-                              )}
-                            </div>
-                            <div className="flex flex-wrap gap-x-3 gap-y-1 text-sm text-stone-400">
-                              <span>{user.jobTitle}</span>
-                              <span>{user.email}</span>
-                              <span>{user.employeeCode}</span>
-                            </div>
-                          </div>
-
-                          <div className="text-xs uppercase tracking-[0.24em] text-stone-500">
-                            {expandedUserId === user.id ? t("Hide actions", "Ocultar acciones") : t("View actions", "Ver acciones")}
-                          </div>
-                        </div>
-                      </button>
-
-                      {expandedUserId === user.id ? (
-                        <div className="border-t border-white/10 px-5 py-4">
-                          <div className="flex flex-wrap gap-2">
-                            <Button
-                              type="button"
-                              variant="secondary"
-                              size="sm"
-                              className="rounded-full border border-white/10 bg-white/90 text-stone-900 hover:bg-white"
-                              onClick={() => {
-                                setEditingUserId(user.id);
-                                setUserForm({
-                                  fullName: user.fullName,
-                                  email: user.email,
-                                  password: "",
-                                  employeeCode: user.employeeCode,
-                                  store: user.store,
-                                  jobTitle: user.jobTitle,
-                                  role: user.role,
-                                });
-                                setIsUserModalOpen(true);
-                              }}
-                            >
-                              <Pencil className="mr-2 h-4 w-4" />
-                              {t("Edit user", "Editar usuario")}
-                            </Button>
-                            <Button
-                              type="button"
-                              variant={user.isBlocked ? "secondary" : "outline"}
-                              size="sm"
-                              className={user.isBlocked ? "rounded-full border border-white/10 bg-white/90 text-stone-900 hover:bg-white" : "rounded-full border-white/15 bg-white/5 text-stone-100 hover:bg-white/10"}
-                              disabled={currentUser.id === user.id}
-                              onClick={() => {
-                                setBlockUserTarget(user);
-                                setBlockUserPin("");
-                              }}
-                            >
-                              <Lock className="mr-2 h-4 w-4" />
-                              {user.isBlocked ? t("Unblock user", "Desbloquear usuario") : t("Block user", "Bloquear usuario")}
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="destructive"
-                              size="sm"
-                              className="rounded-full border border-red-400/20 bg-red-500/85 text-white hover:bg-red-500"
-                              disabled={currentUser.id === user.id}
-                              onClick={() => {
-                                setDeleteUserTarget(user);
-                                setDeleteUserPin("");
-                              }}
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              {t("Delete user", "Eliminar usuario")}
-                            </Button>
-                          </div>
-                        </div>
-                      ) : null}
-                    </div>
-                  ))}
-                </div>
-
-                <Dialog
-                  open={Boolean(blockUserTarget)}
-                  onOpenChange={(open) => {
-                    if (!open) {
-                      setBlockUserTarget(null);
-                      setBlockUserPin("");
-                    }
-                  }}
-                >
-                  <DialogContent className="max-w-md rounded-3xl border-white/10 bg-stone-950 p-6 text-stone-100">
-                    <DialogHeader>
-                      <DialogTitle className="text-white">
-                        {blockUserTarget?.isBlocked
-                          ? t("Confirm user unlock", "Confirmar desbloqueo de usuario")
-                          : t("Confirm user block", "Confirmar bloqueo de usuario")}
-                      </DialogTitle>
-                      <DialogDescription className="text-stone-400">
-                        {blockUserTarget
-                          ? blockUserTarget.isBlocked
-                            ? t(
-                                `Enter the administrator PIN to unblock ${blockUserTarget.fullName}.`,
-                                `Ingresa el PIN del administrador para desbloquear a ${blockUserTarget.fullName}.`
-                              )
-                            : t(
-                                `Enter the administrator PIN to block ${blockUserTarget.fullName}.`,
-                                `Ingresa el PIN del administrador para bloquear a ${blockUserTarget.fullName}.`
-                              )
-                          : t(
-                              "Enter the administrator PIN to continue.",
-                              "Ingresa el PIN del administrador para continuar."
-                            )}
-                      </DialogDescription>
-                    </DialogHeader>
-
-                    <form
-                      className="grid gap-4"
-                      onSubmit={async (event) => {
-                        event.preventDefault();
-                        if (!blockUserTarget) return;
-                        const updated = await handleUserBlockToggle(blockUserTarget, blockUserPin);
-                        if (!updated) return;
-                        setBlockUserTarget(null);
-                        setBlockUserPin("");
-                      }}
-                    >
-                      <Field label={t("Administrator PIN", "PIN del administrador")}>
-                        <Input
-                          type="password"
-                          inputMode="numeric"
-                          maxLength={4}
-                          value={blockUserPin}
-                          onChange={(event) =>
-                            setBlockUserPin(event.target.value.replace(/\D/g, "").slice(0, 4))
-                          }
-                          placeholder="1234"
-                          required
-                        />
-                      </Field>
-
-                      <div className="flex justify-end gap-3">
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          onClick={() => {
-                            setBlockUserTarget(null);
-                            setBlockUserPin("");
-                          }}
-                        >
-                          {t("Cancel", "Cancelar")}
-                        </Button>
-                        <Button type="submit" variant={blockUserTarget?.isBlocked ? "secondary" : "destructive"}>
-                          {blockUserTarget?.isBlocked
-                            ? t("Unblock user", "Desbloquear usuario")
-                            : t("Block user", "Bloquear usuario")}
-                        </Button>
-                      </div>
-                    </form>
-                  </DialogContent>
-                </Dialog>
-
-                <Dialog
-                  open={Boolean(deleteUserTarget)}
-                  onOpenChange={(open) => {
-                    if (!open) {
-                      setDeleteUserTarget(null);
-                      setDeleteUserPin("");
-                    }
-                  }}
-                >
-                  <DialogContent className="max-w-md rounded-3xl border-white/10 bg-stone-950 p-6 text-stone-100">
-                    <DialogHeader>
-                      <DialogTitle className="text-white">
-                        {t("Confirm user deletion", "Confirmar eliminacion de usuario")}
-                      </DialogTitle>
-                      <DialogDescription className="text-stone-400">
-                        {deleteUserTarget
-                          ? t(
-                              `Enter the administrator PIN to delete ${deleteUserTarget.fullName}.`,
-                              `Ingresa el PIN del administrador para eliminar a ${deleteUserTarget.fullName}.`
-                            )
-                          : t(
-                              "Enter the administrator PIN to continue.",
-                              "Ingresa el PIN del administrador para continuar."
-                            )}
-                      </DialogDescription>
-                    </DialogHeader>
-
-                    <form
-                      className="grid gap-4"
-                      onSubmit={async (event) => {
-                        event.preventDefault();
-                        if (!deleteUserTarget) return;
-                        const deleted = await handleUserDelete(deleteUserTarget, deleteUserPin);
-                        if (!deleted) return;
-                        setDeleteUserTarget(null);
-                        setDeleteUserPin("");
-                      }}
-                    >
-                      <Field label={t("Administrator PIN", "PIN del administrador")}>
-                        <Input
-                          type="password"
-                          inputMode="numeric"
-                          maxLength={4}
-                          value={deleteUserPin}
-                          onChange={(event) =>
-                            setDeleteUserPin(event.target.value.replace(/\D/g, "").slice(0, 4))
-                          }
-                          placeholder="1234"
-                          required
-                        />
-                      </Field>
-
-                      <div className="flex justify-end gap-3">
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          onClick={() => {
-                            setDeleteUserTarget(null);
-                            setDeleteUserPin("");
-                          }}
-                        >
-                          {t("Cancel", "Cancelar")}
-                        </Button>
-                        <Button type="submit" variant="destructive">
-                          {t("Delete user", "Eliminar usuario")}
-                        </Button>
-                      </div>
-                    </form>
-                  </DialogContent>
-                </Dialog>
-              </article>
+              <HomeCard
+                icon={<Users className="h-6 w-6" />}
+                title={t("User control", "Control de usuarios")}
+                description={t(
+                  "Review users, work hours, access status, and account actions from one page.",
+                  "Revisa usuarios, horas trabajadas, estado de acceso y acciones de cuenta desde una sola pagina."
+                )}
+                onClick={() => setCurrentView("users")}
+              />
             ) : null}
           </section>
         ) : (
-          <section className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex flex-wrap gap-3">
+          <section className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-wrap gap-2">
               <Button
                 type="button"
                 variant="outline"
-                className="border-white/20 bg-white text-stone-950 hover:bg-stone-200"
+                className="h-10 rounded-xl border-white/20 bg-white px-4 text-sm text-stone-950 hover:bg-stone-200"
                 onClick={() => setCurrentView("home")}
               >
                 <ArrowLeft className="mr-2 h-4 w-4" />
@@ -1632,6 +1511,7 @@ function App() {
               <Button
                 type="button"
                 variant={currentView === "vehicles" ? "default" : "secondary"}
+                className="h-10 rounded-xl px-4 text-sm"
                 onClick={() => setCurrentView("vehicles")}
               >
                 <CarFront className="mr-2 h-4 w-4" />
@@ -1640,6 +1520,7 @@ function App() {
               <Button
                 type="button"
                 variant={currentView === "time" ? "default" : "secondary"}
+                className="h-10 rounded-xl px-4 text-sm"
                 onClick={() => setCurrentView("time")}
               >
                 <Clock3 className="mr-2 h-4 w-4" />
@@ -1648,7 +1529,19 @@ function App() {
               {currentUser.role === "admin" ? (
                 <Button
                   type="button"
+                  variant={currentView === "users" ? "default" : "secondary"}
+                  className="h-10 rounded-xl px-4 text-sm"
+                  onClick={() => setCurrentView("users")}
+                >
+                  <Users className="mr-2 h-4 w-4" />
+                  {t("Users", "Usuarios")}
+                </Button>
+              ) : null}
+              {currentUser.role === "admin" ? (
+                <Button
+                  type="button"
                   variant={currentView === "admin" ? "default" : "secondary"}
+                  className="h-10 rounded-xl px-4 text-sm"
                   onClick={() => setCurrentView("admin")}
                 >
                   <Shield className="mr-2 h-4 w-4" />
@@ -1657,17 +1550,19 @@ function App() {
               ) : null}
             </div>
 
-            {currentView !== "admin" ? (
-              <Badge variant="secondary">
+            {currentView !== "admin" && currentView !== "users" ? (
+              <Badge variant="secondary" className="self-start lg:self-auto">
                 {t("Active location", "Ubicacion activa")}: {activeStore}
               </Badge>
             ) : (
-              <Badge variant="secondary">{t("Global access", "Acceso global")}</Badge>
+              <Badge variant="secondary" className="self-start lg:self-auto">
+                {t("Global access", "Acceso global")}
+              </Badge>
             )}
           </section>
         )}
 
-        {currentView !== "home" && currentView !== "admin" ? (
+        {currentView !== "home" && currentView !== "admin" && currentView !== "users" && currentView !== "vehicles" && currentView !== "time" ? (
           storeSettings.isConfigured ? (
             <section className="rounded-3xl border border-white/10 bg-white/5 px-5 py-4">
               <p className="text-xs uppercase tracking-[0.18em] text-stone-400">
@@ -1744,13 +1639,33 @@ function App() {
           />
         ) : null}
 
+        {currentView === "users" ? (
+          <UserView
+            attendance={attendance}
+            availableLocations={availableLocations}
+            currentUserId={currentUser.id}
+            language={language}
+            onCreateUser={openCreateUserModal}
+            onEditUser={openEditUserModal}
+            onSaveAttendanceCorrection={handleAdminAttendanceCorrection}
+            onRequestBlockToggle={(user) => {
+              setBlockUserTarget(user);
+              setBlockUserPin("");
+            }}
+            onRequestDelete={(user) => {
+              setDeleteUserTarget(user);
+              setDeleteUserPin("");
+            }}
+            t={t}
+            userPayrollData={userPayrollData}
+            userSummaries={userWorkSummaries}
+            users={users}
+          />
+        ) : null}
+
         {currentView === "admin" ? (
         <AdminView
           adminStoreStats={adminStoreStats}
-          availableLocations={availableLocations}
-          configuredLocationLabel={configuredStoreLabel}
-          configuredLocationLogoKey={configuredStoreRecord?.logoKey ?? ""}
-          configuredLocationSubtitle={configuredStoreSubtitle}
           deleteStoreFeedback={deleteStoreFeedback}
           deleteStoreTarget={deleteStoreTarget}
           editingStoreId={editingStoreId}
@@ -1763,32 +1678,26 @@ function App() {
             setCurrentView("vehicles");
           }}
           onResetDemoData={resetDemoData}
-          onClosePayrollPeriod={handleClosePayrollPeriod}
           onExportDailyBillingCsv={exportDailyBillingCsv}
-          onExportPayrollCsv={exportPayrollCsv}
           onPrintDailyBilling={handlePrintDailyBilling}
-          onPrintPayrollSummary={handlePrintPayrollSummary}
           onSendReportPreview={handleSendReportPreview}
+          onSalesCustomEndChange={setSalesCustomEnd}
+          onSalesCustomStartChange={setSalesCustomStart}
+          onSalesPeriodChange={setSalesPeriod}
           onStoreSettingsOpenChange={(open) => {
             setIsStoreSettingsOpen(open);
             if (open) {
               setStoreSettingsForm(storeSettings);
             }
           }}
+          onSetDefaultStore={setDefaultStore}
           onStoreSettingsSubmit={handleStoreSettingsSubmit}
           onStoreSubmit={handleStoreSubmit}
-          payrollClosedAtLabel={
-            latestPayrollClosure
-              ? formatDateWithWeekday(latestPayrollClosure.closedAt.slice(0, 10), language)
-              : t("Not closed yet", "Aun no se ha cerrado")
-          }
-          payrollSummaries={payrollSummaries}
-          payrollTotals={payrollTotals}
-          reportCompleted={reportCompleted}
-          reportStore={reportStore}
-          reportTotal={reportTotal}
-          reportVehicles={reportVehicles}
-          setReportStore={setReportStore}
+          salesCustomEnd={salesCustomEnd}
+          salesCustomStart={salesCustomStart}
+          salesPeriod={salesPeriod}
+          salesPeriodLabel={salesPeriodLabel}
+          storeReportMap={storeReportMap}
           setDeleteStoreFeedback={setDeleteStoreFeedback}
           setDeleteStoreTarget={setDeleteStoreTarget}
           setEditingStoreId={setEditingStoreId}
@@ -1800,13 +1709,299 @@ function App() {
           stores={stores}
           storeForm={storeForm}
           t={t}
-          totalEmployees={totalEmployees}
-          totalOpenShifts={totalOpenShifts}
-          totalVehicles={totalVehicles}
-          vehicles={vehicles}
         />
         ) : null}
       </div>
+
+      <Dialog open={isUserModalOpen} onOpenChange={setIsUserModalOpen}>
+        <DialogContent className="max-w-3xl rounded-3xl border-white/10 bg-stone-950 p-6 text-stone-100">
+          <DialogHeader>
+            <DialogTitle className="text-white">
+              {editingUserId ? t("Edit user", "Editar usuario") : t("User registration", "Registro de usuarios")}
+            </DialogTitle>
+            <DialogDescription className="text-stone-400">
+              {editingUserId
+                ? t(
+                    "Update the selected user's profile, access role, clock-in code, and optionally set a new password.",
+                    "Actualiza el perfil, el rol, el codigo de clock-in y, si quieres, una nueva contrasena del usuario seleccionado."
+                  )
+                : t(
+                    "Create operator or admin accounts with their clock-in code.",
+                    "Crea cuentas de operador o administrador con su codigo de clock-in."
+                  )}
+            </DialogDescription>
+          </DialogHeader>
+
+          <form className="grid gap-4 md:grid-cols-2" onSubmit={handleUserSubmit}>
+            <Field label={t("Full name", "Nombre completo")}>
+              <Input
+                value={userForm.fullName}
+                onChange={(event) =>
+                  setUserForm((current) => ({
+                    ...current,
+                    fullName: event.target.value,
+                  }))
+                }
+                required
+              />
+            </Field>
+
+            <Field label={t("Job title", "Cargo")}>
+              <Input
+                value={userForm.jobTitle}
+                onChange={(event) =>
+                  setUserForm((current) => ({
+                    ...current,
+                    jobTitle: event.target.value,
+                  }))
+                }
+                placeholder={t("Washer, supervisor...", "Lavador, supervisor...")}
+                required
+              />
+            </Field>
+
+            <Field label={t("Email", "Correo")}>
+              <Input
+                type="email"
+                value={userForm.email}
+                onChange={(event) =>
+                  setUserForm((current) => ({
+                    ...current,
+                    email: event.target.value,
+                  }))
+                }
+                placeholder="operator@example.com"
+                required
+              />
+            </Field>
+
+            {!editingUserId ? (
+              <Field label={t("Password", "Contrasena")}>
+                <Input
+                  type="password"
+                  value={userForm.password}
+                  onChange={(event) =>
+                    setUserForm((current) => ({
+                      ...current,
+                      password: event.target.value,
+                    }))
+                  }
+                  required
+                />
+              </Field>
+            ) : (
+              <Field label={t("New password (optional)", "Nueva contrasena (opcional)")}>
+                <Input
+                  type="password"
+                  value={userForm.password}
+                  onChange={(event) =>
+                    setUserForm((current) => ({
+                      ...current,
+                      password: event.target.value,
+                    }))
+                  }
+                  placeholder={t(
+                    "Leave blank to keep the current password",
+                    "Dejala vacia para mantener la contrasena actual"
+                  )}
+                />
+              </Field>
+            )}
+
+            <Field label={t("Clock-in code", "Codigo de clock-in")}>
+              <Input
+                value={userForm.employeeCode}
+                onChange={(event) =>
+                  setUserForm((current) => ({
+                    ...current,
+                    employeeCode: event.target.value.replace(/\D/g, "").slice(0, 4),
+                  }))
+                }
+                inputMode="numeric"
+                maxLength={4}
+                placeholder="1234"
+                required
+              />
+            </Field>
+
+            <Field label={t("Access role", "Rol de acceso")} className="md:col-span-2">
+              <Select
+                value={userForm.role}
+                onChange={(event) =>
+                  setUserForm((current) => ({
+                    ...current,
+                    role: event.target.value as UserRole,
+                  }))
+                }
+              >
+                <option value="operator">{t("Operator", "Usuario")}</option>
+                <option value="admin">{t("Administrator", "Administrador")}</option>
+              </Select>
+            </Field>
+
+            <div className="md:col-span-2 flex flex-wrap gap-3">
+              <Button type="submit">
+                {editingUserId ? t("Update user", "Actualizar usuario") : t("Save user", "Guardar usuario")}
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  setEditingUserId(null);
+                  setUserForm(createUserForm(activeStore));
+                }}
+              >
+                {t("Clear", "Limpiar")}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(blockUserTarget)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setBlockUserTarget(null);
+            setBlockUserPin("");
+          }
+        }}
+      >
+        <DialogContent className="max-w-md rounded-3xl border-white/10 bg-stone-950 p-6 text-stone-100">
+          <DialogHeader>
+            <DialogTitle className="text-white">
+              {blockUserTarget?.isBlocked
+                ? t("Confirm user unlock", "Confirmar desbloqueo de usuario")
+                : t("Confirm user block", "Confirmar bloqueo de usuario")}
+            </DialogTitle>
+            <DialogDescription className="text-stone-400">
+              {blockUserTarget
+                ? blockUserTarget.isBlocked
+                  ? t(
+                      `Enter the administrator PIN to unblock ${blockUserTarget.fullName}.`,
+                      `Ingresa el PIN del administrador para desbloquear a ${blockUserTarget.fullName}.`
+                    )
+                  : t(
+                      `Enter the administrator PIN to block ${blockUserTarget.fullName}.`,
+                      `Ingresa el PIN del administrador para bloquear a ${blockUserTarget.fullName}.`
+                    )
+                : t(
+                    "Enter the administrator PIN to continue.",
+                    "Ingresa el PIN del administrador para continuar."
+                  )}
+            </DialogDescription>
+          </DialogHeader>
+
+          <form
+            className="grid gap-4"
+            onSubmit={async (event) => {
+              event.preventDefault();
+              if (!blockUserTarget) return;
+              const updated = await handleUserBlockToggle(blockUserTarget, blockUserPin);
+              if (!updated) return;
+              setBlockUserTarget(null);
+              setBlockUserPin("");
+            }}
+          >
+            <Field label={t("Administrator PIN", "PIN del administrador")}>
+              <Input
+                type="password"
+                inputMode="numeric"
+                maxLength={4}
+                value={blockUserPin}
+                onChange={(event) => setBlockUserPin(event.target.value.replace(/\D/g, "").slice(0, 4))}
+                placeholder="1234"
+                required
+              />
+            </Field>
+
+            <div className="flex justify-end gap-3">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  setBlockUserTarget(null);
+                  setBlockUserPin("");
+                }}
+              >
+                {t("Cancel", "Cancelar")}
+              </Button>
+              <Button type="submit" variant={blockUserTarget?.isBlocked ? "secondary" : "destructive"}>
+                {blockUserTarget?.isBlocked ? t("Unblock user", "Desbloquear usuario") : t("Block user", "Bloquear usuario")}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(deleteUserTarget)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleteUserTarget(null);
+            setDeleteUserPin("");
+          }
+        }}
+      >
+        <DialogContent className="max-w-md rounded-3xl border-white/10 bg-stone-950 p-6 text-stone-100">
+          <DialogHeader>
+            <DialogTitle className="text-white">
+              {t("Confirm user deletion", "Confirmar eliminacion de usuario")}
+            </DialogTitle>
+            <DialogDescription className="text-stone-400">
+              {deleteUserTarget
+                ? t(
+                    `Enter the administrator PIN to delete ${deleteUserTarget.fullName}.`,
+                    `Ingresa el PIN del administrador para eliminar a ${deleteUserTarget.fullName}.`
+                  )
+                : t(
+                    "Enter the administrator PIN to continue.",
+                    "Ingresa el PIN del administrador para continuar."
+                  )}
+            </DialogDescription>
+          </DialogHeader>
+
+          <form
+            className="grid gap-4"
+            onSubmit={async (event) => {
+              event.preventDefault();
+              if (!deleteUserTarget) return;
+              const deleted = await handleUserDelete(deleteUserTarget, deleteUserPin);
+              if (!deleted) return;
+              setDeleteUserTarget(null);
+              setDeleteUserPin("");
+            }}
+          >
+            <Field label={t("Administrator PIN", "PIN del administrador")}>
+              <Input
+                type="password"
+                inputMode="numeric"
+                maxLength={4}
+                value={deleteUserPin}
+                onChange={(event) => setDeleteUserPin(event.target.value.replace(/\D/g, "").slice(0, 4))}
+                placeholder="1234"
+                required
+              />
+            </Field>
+
+            <div className="flex justify-end gap-3">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  setDeleteUserTarget(null);
+                  setDeleteUserPin("");
+                }}
+              >
+                {t("Cancel", "Cancelar")}
+              </Button>
+              <Button type="submit" variant="destructive">
+                {t("Delete user", "Eliminar usuario")}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <ClockOutDialog
         clockOutCodeInput={clockOutCodeInput}
