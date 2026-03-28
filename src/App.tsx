@@ -574,14 +574,16 @@ function App() {
   const adminStoreStats = useMemo<AdminStoreStat[]>(
     () =>
       availableLocations.map((store) => {
-        const storeVehicles = vehicles.filter((entry) => entry.store === store);
+        const storeVehicles = vehicles.filter(
+          (entry) =>
+            entry.store === store &&
+            isDateWithinRange(entry.date, salesRange.start, salesRange.end)
+        );
         const storeAttendance = attendance.filter((entry) => entry.store === store);
         const storeEmployees = users.filter((entry) => entry.store === store);
         const openShifts = storeAttendance.filter((entry) => !entry.clockOut).length;
         const pending = storeVehicles.filter((entry) => entry.status === "Pendiente").length;
-        const salesToday = storeVehicles
-          .filter((entry) => isDateWithinRange(entry.date, salesRange.start, salesRange.end))
-          .reduce((total, entry) => total + entry.price, 0);
+        const salesToday = storeVehicles.reduce((total, entry) => total + entry.price, 0);
 
         return {
           store,
