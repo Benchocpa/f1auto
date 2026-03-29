@@ -5,7 +5,7 @@ export type Language = "en" | "es";
 export type UserRole = "admin" | "operator";
 export type VehicleHistoryAction = "created" | "status" | "delivery_time" | "updated";
 export type SalesPeriodPreset = "today" | "yesterday" | "week" | "month" | "year" | "custom";
-export type VehicleDatePreset = "today" | "yesterday" | "week" | "month" | "specific";
+export type VehicleDatePreset = "today" | "yesterday" | "week" | "month" | "specific" | "overdue";
 export type Translate = (en: string, es: string) => string;
 
 export interface VehicleHistoryEvent {

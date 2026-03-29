@@ -48,7 +48,7 @@ interface VehicleViewProps {
   deleteVehicleEntry: (id: string) => boolean;
   updateVehicleDeliveredTime: (id: string, deliveredTime: string) => void;
   updateVehicleEntry: (id: string, payload: VehicleFormState) => boolean;
-  updateVehicleStatus: (id: string, status: VehicleStatus) => void;
+  updateVehicleStatus: (id: string, status: VehicleStatus, options?: { fromOverdueReview?: boolean }) => void;
   vehicleFilters: VehicleFiltersState;
   vehicleForm: VehicleFormState;
   vehicleRecords: VehicleEntry[];
@@ -83,6 +83,7 @@ export function VehicleView({
     id: string;
     nextStatus: VehicleStatus;
     vehicleLabel: string;
+    fromOverdueReview?: boolean;
   } | null>(null);
   const [editingVehicle, setEditingVehicle] = useState<VehicleEntry | null>(null);
   const [editingVehicleForm, setEditingVehicleForm] = useState<VehicleFormState | null>(null);
@@ -482,19 +483,52 @@ export function VehicleView({
 
         {overduePendingVehicles.length ? (
           <div className="mb-4 rounded-2xl border border-amber-400/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
-            <p className="font-medium">
-              {t(
-                `${overduePendingVehicles.length} pending vehicles from previous days need review.`,
-                `${overduePendingVehicles.length} vehiculos pendientes de dias anteriores necesitan revision.`
-              )}
-            </p>
-            <p className="mt-1 text-amber-50/85">
-              {overduePendingVehicles
-                .slice(0, 4)
-                .map((entry) => `${entry.make} ${entry.model} · ${entry.stock} · ${entry.date}`)
-                .join(" · ")}
-              {overduePendingVehicles.length > 4 ? " ..." : ""}
-            </p>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="font-medium">
+                  {t(
+                    `${overduePendingVehicles.length} pending vehicles from previous days need review.`,
+                    `${overduePendingVehicles.length} vehiculos pendientes de dias anteriores necesitan revision.`
+                  )}
+                </p>
+                <p className="mt-1 text-amber-50/85">
+                  {overduePendingVehicles
+                    .slice(0, 4)
+                    .map((entry) => `${entry.make} ${entry.model} · ${entry.stock} · ${entry.date}`)
+                    .join(" · ")}
+                  {overduePendingVehicles.length > 4 ? " ..." : ""}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="rounded-full"
+                  onClick={() =>
+                    setVehicleFilters((current) => ({
+                      ...current,
+                      datePreset: "overdue",
+                      status: "Pendiente",
+                    }))
+                  }
+                >
+                  {t("Review now", "Revisar ahora")}
+                </Button>
+                {vehicleFilters.datePreset === "overdue" ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="rounded-full"
+                    onClick={() => {
+                      setVehicleFilters(createVehicleFilters());
+                      setMakeFilter("Todas");
+                    }}
+                  >
+                    {t("Back to today", "Volver a hoy")}
+                  </Button>
+                ) : null}
+              </div>
+            </div>
           </div>
         ) : null}
 
@@ -560,6 +594,7 @@ export function VehicleView({
                   <option value="yesterday">{t("Yesterday", "Ayer")}</option>
                   <option value="week">{t("This week", "Esta semana")}</option>
                   <option value="month">{t("This month", "Este mes")}</option>
+                  <option value="overdue">{t("Previous pending", "Pendientes anteriores")}</option>
                   <option value="specific">{t("Specific day", "Dia especifico")}</option>
                 </Select>
               </Field>
@@ -760,6 +795,24 @@ export function VehicleView({
                               {t("Edit", "Editar")}
                             </Button>
                           ) : null}
+                          {entry.status !== "Entregado" && entry.date < getTodayDate() ? (
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              className="rounded-full border border-emerald-400/25 bg-emerald-500/15 text-emerald-100 hover:bg-emerald-500/25"
+                              onClick={() =>
+                                setStatusConfirmation({
+                                  id: entry.id,
+                                  nextStatus: "Entregado",
+                                  vehicleLabel: `${entry.make} ${entry.model} · ${entry.stock}`,
+                                  fromOverdueReview: true,
+                                })
+                              }
+                            >
+                              {t("Complete today", "Completar hoy")}
+                            </Button>
+                          ) : null}
                           <Button
                             type="button"
                             variant="destructive"
@@ -894,7 +947,9 @@ export function VehicleView({
                 className="bg-emerald-100 text-emerald-900 hover:bg-emerald-200"
                 onClick={() => {
                   if (!statusConfirmation) return;
-                  updateVehicleStatus(statusConfirmation.id, statusConfirmation.nextStatus);
+                  updateVehicleStatus(statusConfirmation.id, statusConfirmation.nextStatus, {
+                    fromOverdueReview: statusConfirmation.fromOverdueReview,
+                  });
                   setStatusConfirmation(null);
                 }}
               >

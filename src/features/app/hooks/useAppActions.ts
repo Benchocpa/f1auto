@@ -797,7 +797,7 @@ export function useVehicleActions({
   );
 
   const updateVehicleStatus = useCallback(
-    (id: string, status: VehicleStatus) => {
+    (id: string, status: VehicleStatus, options?: { fromOverdueReview?: boolean }) => {
       const actor = currentUser?.fullName ?? "System";
       const nowIso = new Date().toISOString();
 
@@ -826,11 +826,17 @@ export function useVehicleActions({
                 action: "status",
                 timestamp: nowIso,
                 by: actor,
-                note: `Status changed to ${
-                  status === "Entregado"
-                    ? t("Complete", "Completo")
-                    : t("Pending", "Pendiente")
-                }.`,
+                note:
+                  status === "Entregado" && options?.fromOverdueReview
+                    ? t(
+                        "Status changed to Complete during overdue review.",
+                        "Estado cambiado a Completo durante revision de pendientes."
+                      )
+                    : `Status changed to ${
+                        status === "Entregado"
+                          ? t("Complete", "Completo")
+                          : t("Pending", "Pendiente")
+                      }.`,
               },
               ...(autoDeliveredTime && !entry.deliveredTime
                 ? [

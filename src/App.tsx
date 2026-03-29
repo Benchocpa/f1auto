@@ -386,6 +386,10 @@ function App() {
         vehicleDateStart = vehicleFilters.date || today;
         vehicleDateEnd = vehicleFilters.date || today;
         break;
+      case "overdue":
+        vehicleDateStart = "0000-01-01";
+        vehicleDateEnd = today;
+        break;
     }
 
     if (makeFilter !== "Todas") {
@@ -393,7 +397,9 @@ function App() {
     }
 
     result = result.filter((entry) =>
-      isDateWithinRange(entry.date, vehicleDateStart, vehicleDateEnd)
+      vehicleFilters.datePreset === "overdue"
+        ? entry.status === "Pendiente" && entry.date < today
+        : isDateWithinRange(entry.date, vehicleDateStart, vehicleDateEnd)
     );
 
     if (vehicleFilters.status !== "all") {
