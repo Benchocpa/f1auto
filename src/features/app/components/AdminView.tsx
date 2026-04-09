@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { TimerReset, Pencil, Trash2 } from "lucide-react";
+import { Pencil, Trash2 } from "lucide-react";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import {
@@ -36,7 +36,6 @@ interface AdminViewProps {
   onExportDailyBillingCsv: (store: StoreName, vehicles: VehicleEntry[]) => void;
   onJumpToStore: (store: StoreName) => void;
   onPrintDailyBilling: (store: StoreName, vehicles: VehicleEntry[]) => void;
-  onResetDemoData: () => void;
   onSendReportPreview: (store: StoreName, vehicles: VehicleEntry[]) => void;
   onSalesCustomEndChange: React.Dispatch<React.SetStateAction<string>>;
   onSalesCustomStartChange: React.Dispatch<React.SetStateAction<string>>;
@@ -78,7 +77,6 @@ export function AdminView({
   onExportDailyBillingCsv,
   onJumpToStore,
   onPrintDailyBilling,
-  onResetDemoData,
   onSendReportPreview,
   onSalesCustomEndChange,
   onSalesCustomStartChange,
@@ -542,29 +540,6 @@ export function AdminView({
           </DialogContent>
         </Dialog>
 
-        <div className="panel">
-          <div className="panel-header">
-            <div>
-              <p className="eyebrow">{t("Control", "Control")}</p>
-              <h2 className="panel-title">{t("System maintenance", "Mantenimiento del sistema")}</h2>
-            </div>
-            <TimerReset className="h-5 w-5 text-stone-400" />
-          </div>
-
-          <p className="text-sm text-stone-300">
-            {t(
-              "From this view you can review the whole business and jump into a specific location when needed.",
-              "Desde esta vista puedes revisar todo el negocio y saltar a una ubicacion puntual cuando necesites operar."
-            )}
-          </p>
-
-          <div className="mt-6 border-t border-white/10 pt-6">
-            <Button type="button" variant="destructive" onClick={onResetDemoData}>
-              <TimerReset className="mr-2 h-4 w-4" />
-              {t("Reset demo data", "Reiniciar datos de prueba")}
-            </Button>
-          </div>
-        </div>
       </div>
 
       <Dialog

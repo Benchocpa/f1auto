@@ -50,6 +50,20 @@ export function getCurrentWeekRange() {
   };
 }
 
+export function getWeekRangeFromOffset(offset: number) {
+  const today = new Date();
+  const day = today.getDay();
+  const diffToMonday = day === 0 ? -6 : 1 - day;
+  const start = new Date(today);
+  start.setDate(today.getDate() + diffToMonday + offset * 7);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  return {
+    start: toDateString(start),
+    end: toDateString(end),
+  };
+}
+
 export function getWeekDates(range = getCurrentWeekRange()) {
   const start = new Date(`${range.start}T12:00:00`);
   return Array.from({ length: 7 }, (_, index) => {
@@ -342,10 +356,11 @@ export function buildUserWorkSummaries(params: {
   attendance: AttendanceEntry[];
   users: UserEntry[];
   now?: Date;
+  weekRange?: { start: string; end: string };
 }) {
-  const { attendance, users, now = new Date() } = params;
+  const { attendance, users, now = new Date(), weekRange } = params;
   const today = getTodayDate();
-  const currentWeek = getCurrentWeekRange();
+  const currentWeek = weekRange ?? getCurrentWeekRange();
   const weekDates = getWeekDates(currentWeek);
   const summaryMap = new Map<string, UserWorkSummary>();
   const minutesMap = new Map<string, { today: number; week: number }>();

@@ -1685,7 +1685,6 @@ function App() {
             setActiveStore(store);
             setCurrentView("vehicles");
           }}
-          onResetDemoData={resetDemoData}
           onExportDailyBillingCsv={exportDailyBillingCsv}
           onPrintDailyBilling={handlePrintDailyBilling}
           onSendReportPreview={handleSendReportPreview}

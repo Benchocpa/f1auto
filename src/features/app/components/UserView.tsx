@@ -1,5 +1,5 @@
 import { Fragment, useMemo, useState } from "react";
-import { Clock3, Lock, Pencil, Trash2, Users } from "lucide-react";
+import { ChevronLeft, ChevronRight, Clock3, Lock, Pencil, Trash2, Users } from "lucide-react";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import {
@@ -20,7 +20,7 @@ import {
   TableRow,
 } from "../../../components/ui/table";
 import type { AttendanceEntry, Language, PayrollEmployeeSummary, SalesPeriodPreset, StoreName, Translate, UserEntry, UserRole, UserWorkSummary } from "../types";
-import { formatMinutesAsHours, formatTimestamp, getSalesPeriodRange, getWorkedMinutes, isDateWithinRange, normalizeEmployeeCode, roundHours } from "../utils";
+import { buildUserWorkSummaries, formatMinutesAsHours, formatTimestamp, getSalesPeriodRange, getWeekRangeFromOffset, getWorkedMinutes, isDateWithinRange, normalizeEmployeeCode, roundHours } from "../utils";
 import { Field, MiniStat, StatCard } from "./common";
 
 interface UserViewProps {
@@ -92,18 +92,30 @@ export function UserView({
   const [roleFilter, setRoleFilter] = useState<"all" | UserRole>("all");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "blocked" | "open">("all");
   const [storeFilter, setStoreFilter] = useState<"all" | StoreName>("all");
+  const [weekOffset, setWeekOffset] = useState(0);
 
-  const totalUsers = userSummaries.length;
-  const totalActiveUsers = userSummaries.filter((entry) => !entry.isBlocked).length;
-  const totalBlockedUsers = userSummaries.filter((entry) => entry.isBlocked).length;
-  const totalOpenShifts = userSummaries.reduce((sum, entry) => sum + entry.openShiftCount, 0);
-  const totalHoursToday = userSummaries.reduce((sum, entry) => sum + entry.workedTodayHours, 0);
-  const totalHoursWeek = userSummaries.reduce((sum, entry) => sum + entry.workedWeekHours, 0);
+  const selectedWeekRange = useMemo(() => getWeekRangeFromOffset(weekOffset), [weekOffset]);
+  const displayedUserSummaries = useMemo(
+    () =>
+      buildUserWorkSummaries({
+        attendance,
+        users,
+        weekRange: selectedWeekRange,
+      }),
+    [attendance, selectedWeekRange, users]
+  );
+
+  const totalUsers = displayedUserSummaries.length;
+  const totalActiveUsers = displayedUserSummaries.filter((entry) => !entry.isBlocked).length;
+  const totalBlockedUsers = displayedUserSummaries.filter((entry) => entry.isBlocked).length;
+  const totalOpenShifts = displayedUserSummaries.reduce((sum, entry) => sum + entry.openShiftCount, 0);
+  const totalHoursToday = displayedUserSummaries.reduce((sum, entry) => sum + entry.workedTodayHours, 0);
+  const totalHoursWeek = displayedUserSummaries.reduce((sum, entry) => sum + entry.workedWeekHours, 0);
 
   const filteredSummaries = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
 
-    return userSummaries.filter((entry) => {
+    return displayedUserSummaries.filter((entry) => {
       if (
         normalizedSearch &&
         ![
@@ -132,7 +144,7 @@ export function UserView({
 
       return true;
     });
-  }, [roleFilter, search, statusFilter, storeFilter, userSummaries]);
+  }, [displayedUserSummaries, roleFilter, search, statusFilter, storeFilter]);
 
   const weekdayFormatter = useMemo(
     () =>
@@ -418,7 +430,7 @@ export function UserView({
           icon={<Clock3 className="h-5 w-5" />}
           label={t("Hours this week", "Horas de la semana")}
           value={totalHoursWeek.toFixed(2)}
-          detail={t("Current weekly accumulation", "Acumulado semanal actual")}
+          detail={`${selectedWeekRange.start} → ${selectedWeekRange.end}`}
         />
       </div>
 
@@ -469,6 +481,28 @@ export function UserView({
               ))}
             </Select>
           </Field>
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
+          <div>
+            <p className="text-xs uppercase tracking-[0.18em] text-stone-500">
+              {t("Weekly view", "Vista semanal")}
+            </p>
+            <p className="text-sm text-stone-200">
+              {selectedWeekRange.start} → {selectedWeekRange.end}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="secondary" size="sm" className="rounded-full" onClick={() => setWeekOffset((current) => current - 1)}>
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button type="button" variant="secondary" size="sm" className="rounded-full" onClick={() => setWeekOffset(0)}>
+              {t("This week", "Esta semana")}
+            </Button>
+            <Button type="button" variant="secondary" size="sm" className="rounded-full" onClick={() => setWeekOffset((current) => current + 1)}>
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
 
         <div className="mt-6 overflow-hidden rounded-[26px] border border-white/10 bg-white/[0.03]">
